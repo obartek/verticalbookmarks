@@ -7,12 +7,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   const addBtn = document.getElementById('add-btn');
   const floatingAddBtn = document.getElementById('floating-add-btn');
+  const themeToggle = document.getElementById('theme-toggle');
 
   // Storage key for favorites
   const FAVORITES_KEY = 'vertical_bookmarks_favorites';
+  const THEME_KEY = 'vertical_bookmarks_theme';
   
   // Edit mode state
   let isEditMode = false;
+  let isDarkMode = false;
 
   // Get favorites from storage
   function getFavorites() {
@@ -26,6 +29,27 @@ document.addEventListener('DOMContentLoaded', () => {
   // Save favorites to storage
   function saveFavorites(favorites) {
     chrome.storage.local.set({ [FAVORITES_KEY]: favorites });
+  }
+
+  // Get theme from storage
+  function getTheme() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([THEME_KEY], (result) => {
+        resolve(result[THEME_KEY] || 'light');
+      });
+    });
+  }
+
+  // Save theme to storage
+  function saveTheme(theme) {
+    chrome.storage.local.set({ [THEME_KEY]: theme });
+  }
+
+  // Apply theme
+  function applyTheme(theme) {
+    isDarkMode = theme === 'dark';
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    themeToggle.classList.toggle('dark', isDarkMode);
   }
 
   // Create context menu
@@ -315,12 +339,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // Floating add button
   floatingAddBtn.addEventListener('click', addCurrentPageToFavorites);
 
+  // Theme toggle
+  themeToggle.addEventListener('click', () => {
+    const newTheme = isDarkMode ? 'light' : 'dark';
+    applyTheme(newTheme);
+    saveTheme(newTheme);
+  });
+
+  // Initialize theme
+  async function initializeTheme() {
+    const savedTheme = await getTheme();
+    applyTheme(savedTheme);
+  }
+
   // Initialize
   chrome.bookmarks.getTree((bookmarkTree) => {
     renderBookmarkTree(bookmarkTree, bookmarksContainer);
   });
 
   renderFavorites();
+  initializeTheme();
 
   // Listen for favicon responses
   chrome.runtime.onMessage.addListener((message) => {

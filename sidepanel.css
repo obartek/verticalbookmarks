@@ -1,8 +1,14 @@
 body {
-  background-color: #EFE5E7;
+  background-color: #ffffff;
   margin: 0;
   font-family: sans-serif;
   padding: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body.dark-mode {
+  background-color: #1a1a1a;
+  color: #e5e5e5;
 }
 
 /* Section headers */
@@ -29,11 +35,86 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: #666;
+  transition: color 0.3s ease;
+}
+
+.dark-mode .section-header {
+  background-color: #2a2a2a;
+  border-bottom-color: #444;
+}
+
+.dark-mode .section-header h3 {
+  color: #e5e5e5;
 }
 
 .header-buttons {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle-container {
+  display: flex;
+  align-items: center;
+}
+
+.theme-toggle {
+  position: relative;
+  width: 50px;
+  height: 24px;
+  background-color: #e5e5e5;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  overflow: hidden;
+}
+
+.theme-toggle.dark {
+  background-color: #4a4a4a;
+}
+
+.toggle-slider {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.theme-toggle.dark .toggle-slider {
+  transform: translateX(26px);
+  background-color: #2a2a2a;
+}
+
+.toggle-icon {
+  font-size: 12px;
+  position: absolute;
+  transition: opacity 0.3s ease;
+}
+
+.toggle-icon.sun {
+  opacity: 1;
+}
+
+.toggle-icon.moon {
+  opacity: 0;
+}
+
+.theme-toggle.dark .toggle-icon.sun {
+  opacity: 0;
+}
+
+.theme-toggle.dark .toggle-icon.moon {
+  opacity: 1;
+  color: #ffd700;
 }
 
 .header-btn {
@@ -65,6 +146,13 @@ body {
   color: #666;
   border-bottom: 1px solid #ddd;
   background-color: #f8f8f8;
+  transition: all 0.3s ease;
+}
+
+.dark-mode #bookmarks-section h3 {
+  color: #e5e5e5;
+  border-bottom-color: #444;
+  background-color: #2a2a2a;
 }
 
 /* Favorites section - grid layout with icons only */
@@ -79,14 +167,22 @@ body {
   position: relative;
   width: 60px;
   height: 48px;
-  background-color: #F8F3F4;
+  background-color: #f5f5f5;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease;
   cursor: pointer;
+}
+
+.dark-mode .favorite-item {
+  background-color: #2a2a2a;
+}
+
+.dark-mode .favorite-item:hover {
+  background-color: #3a3a3a;
 }
 
 .favorite-item:hover {
@@ -155,6 +251,13 @@ body {
   z-index: 1000;
   min-width: 150px;
   overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.dark-mode .context-menu {
+  background: #2a2a2a;
+  border-color: #444;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .context-menu-item {
@@ -162,7 +265,23 @@ body {
   cursor: pointer;
   font-size: 14px;
   color: #333;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.3s ease;
+}
+
+.dark-mode .context-menu-item {
+  color: #e5e5e5;
+}
+
+.dark-mode .context-menu-item:hover {
+  background-color: #3a3a3a;
+}
+
+.dark-mode .context-menu-item:last-child {
+  color: #ff6b6b;
+}
+
+.dark-mode .context-menu-item:last-child:hover {
+  background-color: #3a2a2a;
 }
 
 .context-menu-item:hover {
@@ -229,6 +348,14 @@ body {
   transition: background-color 0.2s ease;
 }
 
+.dark-mode .folder-header {
+  background-color: #2a2a2a;
+}
+
+.dark-mode .folder-header:hover {
+  background-color: #3a3a3a;
+}
+
 .folder-header:hover {
   background-color: #e8e8e8;
 }
@@ -267,8 +394,16 @@ body {
   text-decoration: none;
   color: #333;
   border-radius: 4px;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.3s ease;
   position: relative;
+}
+
+.dark-mode .bookmark-link {
+  color: #e5e5e5;
+}
+
+.dark-mode .bookmark-link:hover {
+  background-color: #2a2a2a;
 }
 
 .bookmark-link:hover {
