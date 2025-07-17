@@ -4,9 +4,15 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const favoritesContainer = document.getElementById('favorites-container');
   const bookmarksContainer = document.getElementById('bookmarks-container');
+  const editToggleBtn = document.getElementById('edit-toggle-btn');
+  const addBtn = document.getElementById('add-btn');
+  const floatingAddBtn = document.getElementById('floating-add-btn');
 
   // Storage key for favorites
   const FAVORITES_KEY = 'vertical_bookmarks_favorites';
+  
+  // Edit mode state
+  let isEditMode = false;
 
   // Get favorites from storage
   function getFavorites() {
@@ -22,7 +28,53 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set({ [FAVORITES_KEY]: favorites });
   }
 
-  // Create favorite bookmark element (icon only)
+  // Create context menu
+  function createContextMenu(bookmark, x, y) {
+    // Remove existing context menu if any
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    const contextMenu = document.createElement('div');
+    contextMenu.className = 'context-menu';
+    contextMenu.style.left = x + 'px';
+    contextMenu.style.top = y + 'px';
+
+    const openItem = document.createElement('div');
+    openItem.className = 'context-menu-item';
+    openItem.textContent = 'Open';
+    openItem.addEventListener('click', () => {
+      window.open(bookmark.url, '_blank');
+      contextMenu.remove();
+    });
+
+    const removeItem = document.createElement('div');
+    removeItem.className = 'context-menu-item';
+    removeItem.textContent = 'Delete';
+    removeItem.addEventListener('click', async () => {
+      const favorites = await getFavorites();
+      const updatedFavorites = favorites.filter(fav => fav.url !== bookmark.url);
+      saveFavorites(updatedFavorites);
+      renderFavorites();
+      contextMenu.remove();
+    });
+
+    contextMenu.appendChild(openItem);
+    contextMenu.appendChild(removeItem);
+    document.body.appendChild(contextMenu);
+
+    // Close menu when clicking outside
+    const closeMenu = (e) => {
+      if (!contextMenu.contains(e.target)) {
+        contextMenu.remove();
+        document.removeEventListener('click', closeMenu);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  }
+
+  // Create favorite bookmark element
   function createFavoriteElement(bookmark) {
     const favoriteItem = document.createElement('div');
     favoriteItem.className = 'favorite-item';
@@ -41,29 +93,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const tooltip = document.createElement('span');
     tooltip.className = 'tooltip';
-    tooltip.textContent = bookmark.title;
+    tooltip.textContent = `Go to ${bookmark.title}`;
 
-    // Remove from favorites button
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-favorite-btn';
-    removeBtn.textContent = '×';
-    removeBtn.title = 'Remove from favorites';
-    
-    removeBtn.addEventListener('click', async (e) => {
+    // Three-dot menu button (only visible in edit mode)
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'menu-btn';
+    menuBtn.textContent = '⋮';
+    menuBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
-      const favorites = await getFavorites();
-      const updatedFavorites = favorites.filter(fav => fav.url !== bookmark.url);
-      saveFavorites(updatedFavorites);
-      renderFavorites();
+      const rect = menuBtn.getBoundingClientRect();
+      createContextMenu(bookmark, rect.left, rect.bottom);
     });
 
     link.appendChild(favicon);
     link.appendChild(tooltip);
     
     favoriteItem.appendChild(link);
-    favoriteItem.appendChild(removeBtn);
+    favoriteItem.appendChild(menuBtn);
+
+    // Handle click behavior based on mode
+    favoriteItem.addEventListener('click', (e) => {
+      if (!isEditMode && !e.target.classList.contains('menu-btn')) {
+        // In normal mode, clicking anywhere opens the link
+        window.open(bookmark.url, '_blank');
+      }
+    });
+
+    // Handle long press for mobile
+    let longPressTimer;
+    favoriteItem.addEventListener('touchstart', (e) => {
+      if (!isEditMode) {
+        longPressTimer = setTimeout(() => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          createContextMenu(bookmark, touch.clientX, touch.clientY);
+        }, 500);
+      }
+    });
+
+    favoriteItem.addEventListener('touchend', () => {
+      clearTimeout(longPressTimer);
+    });
+
+    favoriteItem.addEventListener('touchmove', () => {
+      clearTimeout(longPressTimer);
+    });
 
     return favoriteItem;
   }
@@ -129,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const addToFavoritesBtn = document.createElement('button');
       addToFavoritesBtn.className = 'add-to-favorites-btn';
       addToFavoritesBtn.textContent = '★';
-      addToFavoritesBtn.title = 'Add to favorites';
+      addToFavoritesBtn.title = 'Add to My Picks';
       
       addToFavoritesBtn.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -183,10 +258,27 @@ document.addEventListener('DOMContentLoaded', () => {
       const favoriteElement = createFavoriteElement(bookmark);
       favoritesContainer.appendChild(favoriteElement);
     });
+    
+    // Update edit mode styling
+    updateEditModeStyles();
   }
 
-  // Add current page to favorites
-  document.getElementById('add-current-page-btn').addEventListener('click', async () => {
+  // Update edit mode styles
+  function updateEditModeStyles() {
+    const favoritesSection = document.getElementById('favorites-section');
+    const menuBtns = document.querySelectorAll('.menu-btn');
+    
+    if (isEditMode) {
+      favoritesSection.classList.add('edit-mode');
+      menuBtns.forEach(btn => btn.style.display = 'flex');
+    } else {
+      favoritesSection.classList.remove('edit-mode');
+      menuBtns.forEach(btn => btn.style.display = 'none');
+    }
+  }
+
+  // Function to add current page to favorites
+  async function addCurrentPageToFavorites() {
     try {
       // Get current active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -205,9 +297,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     } catch (error) {
-      console.error('Error adding current page to favorites:', error);
+      console.error('Error adding current page to My Picks:', error);
     }
+  }
+
+  // Toggle edit mode
+  editToggleBtn.addEventListener('click', () => {
+    isEditMode = !isEditMode;
+    editToggleBtn.textContent = isEditMode ? 'Done' : 'Edit';
+    editToggleBtn.classList.toggle('edit-active', isEditMode);
+    updateEditModeStyles();
   });
+
+  // Add button in header
+  addBtn.addEventListener('click', addCurrentPageToFavorites);
+
+  // Floating add button
+  floatingAddBtn.addEventListener('click', addCurrentPageToFavorites);
 
   // Initialize
   chrome.bookmarks.getTree((bookmarkTree) => {

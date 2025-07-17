@@ -10,6 +10,10 @@ body {
   margin-bottom: 16px;
 }
 
+#favorites-section {
+  position: relative;
+}
+
 .section-header {
   display: flex;
   align-items: center;
@@ -27,25 +31,30 @@ body {
   color: #666;
 }
 
-.add-current-btn {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  font-size: 16px;
-  cursor: pointer;
+.header-buttons {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s ease, transform 0.2s ease;
-  line-height: 1;
+  gap: 8px;
 }
 
-.add-current-btn:hover {
-  background-color: #45a049;
-  transform: scale(1.1);
+.header-btn {
+  background: none;
+  border: 1px solid #007AFF;
+  color: #007AFF;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.header-btn:hover {
+  background-color: #007AFF;
+  color: white;
+}
+
+.header-btn.edit-active {
+  background-color: #007AFF;
+  color: white;
 }
 
 #bookmarks-section h3 {
@@ -77,6 +86,7 @@ body {
   justify-content: center;
   box-shadow: none;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
 }
 
 .favorite-item:hover {
@@ -92,6 +102,7 @@ body {
   height: 100%;
   text-decoration: none;
   border-radius: 12px;
+  pointer-events: none; /* Disable default link behavior, handled by JS */
 }
 
 .favorite-link img {
@@ -99,13 +110,13 @@ body {
   height: 24px;
 }
 
-.remove-favorite-btn {
+.menu-btn {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: 2px;
+  right: 2px;
   width: 16px;
   height: 16px;
-  background-color: #ff4444;
+  background-color: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
   border-radius: 50%;
@@ -116,14 +127,87 @@ body {
   justify-content: center;
   line-height: 1;
   transition: background-color 0.2s ease;
+  z-index: 2;
 }
 
-.favorite-item:hover .remove-favorite-btn {
+.menu-btn:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+/* Edit mode styles */
+.edit-mode .favorite-item {
+  animation: wiggle 0.3s ease-in-out;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-1deg); }
+  75% { transform: rotate(1deg); }
+}
+
+/* Context menu */
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 150px;
+  overflow: hidden;
+}
+
+.context-menu-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.2s ease;
+}
+
+.context-menu-item:hover {
+  background-color: #f5f5f5;
+}
+
+.context-menu-item:last-child {
+  color: #ff4444;
+}
+
+.context-menu-item:last-child:hover {
+  background-color: #fff5f5;
+}
+
+/* Floating add button */
+.floating-add-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  background-color: #6B7280;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.2);
+  transition: all 0.2s ease;
+  z-index: 100;
+  line-height: 1;
 }
 
-.remove-favorite-btn:hover {
-  background-color: #cc0000;
+.floating-add-btn:hover {
+  background-color: #4B5563;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+}
+
+.floating-add-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(107, 114, 128, 0.2);
 }
 
 /* Bookmarks section - tree layout */
@@ -252,6 +336,11 @@ body {
   opacity: 1;
 }
 
+/* Hide tooltips in edit mode */
+.edit-mode .tooltip {
+  display: none;
+}
+
 /* Scrollbar styling */
 body::-webkit-scrollbar {
   width: 8px;
@@ -268,4 +357,24 @@ body::-webkit-scrollbar-thumb {
 
 body::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+  .floating-add-btn {
+    bottom: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+  
+  .context-menu {
+    min-width: 120px;
+  }
+  
+  .context-menu-item {
+    padding: 12px 16px;
+    font-size: 16px;
+  }
 }
