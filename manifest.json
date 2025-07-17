@@ -3,17 +3,25 @@
   "name": "Vertical Bookmarks",
   "version": "1.0",
   "description": "A simple vertical bookmarks extension.",
-  "permissions": ["sidePanel", "bookmarks", "storage"],
+  "permissions": ["sidePanel", "bookmarks", "storage", "activeTab"],
   "host_permissions": [
     "<all_urls>"
   ],
+  "icons": {
+    "16": "icons/logo/logo-16.png",
+    "32": "icons/logo/logo-32.png",
+    "48": "icons/logo/logo-48.png",
+    "128": "icons/logo/logo-128.png"
+  },
   "side_panel": {
     "default_path": "sidepanel.html"
   },
   "action": {
     "default_icon": {
-      "16": "icons/icon-inactive.svg",
-      "32": "icons/icon-inactive.svg"
+      "16": "icons/logo/logo-16-inactive.png",
+      "32": "icons/logo/logo-32-inactive.png",
+      "48": "icons/logo/logo-48-inactive.png",
+      "128": "icons/logo/logo-128-inactive.png"
     },
     "default_title": "Toggle Vertical Bookmarks"
   },
