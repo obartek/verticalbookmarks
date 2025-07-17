@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function handleDragEnd(event) {
+  async function handleDragEnd(event) {
     if (!isDragging) return;
     
     isDragging = false;
@@ -225,13 +225,14 @@ document.addEventListener('DOMContentLoaded', () => {
     favoritesContainer.classList.remove('drag-active');
     
     // Update favorites order based on current DOM order
+    const favorites = await getFavorites();
     const newOrder = Array.from(favoritesContainer.children)
       .filter(child => child.classList.contains('favorite-item'))
       .map(child => {
         const link = child.querySelector('.favorite-link');
         const url = link.href;
-        const title = child.querySelector('.tooltip').textContent.replace('Go to ', '');
-        return { title, url };
+        const favorite = favorites.find(fav => fav.url === url);
+        return { title: favorite ? favorite.title : 'Untitled', url };
       });
     
     saveFavorites(newOrder);
@@ -330,10 +331,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Request favicon from background script
     chrome.runtime.sendMessage({ type: 'get_favicon', url: bookmark.url });
 
-    const tooltip = document.createElement('span');
-    tooltip.className = 'tooltip';
-    tooltip.textContent = `Go to ${bookmark.title}`;
-
     // Three-dot menu button (only visible in edit mode)
     const menuBtn = document.createElement('button');
     menuBtn.className = 'menu-btn';
@@ -366,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     link.appendChild(favicon);
-    link.appendChild(tooltip);
     
     favoriteItem.appendChild(link);
     favoriteItem.appendChild(menuBtn);
@@ -481,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Add to favorites button
       const addToFavoritesBtn = document.createElement('button');
       addToFavoritesBtn.className = 'add-to-favorites-btn';
-      addToFavoritesBtn.textContent = '★';
+      addToFavoritesBtn.textContent = '+';
       addToFavoritesBtn.title = 'Add to My Picks';
       
       addToFavoritesBtn.addEventListener('click', async (e) => {
