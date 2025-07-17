@@ -37,4 +37,27 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
       updateIcon(windowId);
     }
   }
+
+  if (message.type === 'get_favicon') {
+    const domain = new URL(message.url).hostname;
+    const faviconUrl = `https://www.google.com/s2/favicons?sz=32&domain=${domain}`;
+    
+    fetch(faviconUrl)
+      .then(response => response.blob())
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          chrome.runtime.sendMessage({
+            type: 'favicon_response',
+            url: message.url,
+            dataUrl: reader.result
+          });
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => {
+        // Ignore errors, default icon will be used
+      });
+    return true; // Indicates that the response is sent asynchronously
+  }
 });

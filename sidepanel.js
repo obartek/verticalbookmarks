@@ -27,8 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
     bookmarkItem.className = 'bookmark-item';
 
     const favicon = document.createElement('img');
-    favicon.src = `chrome://favicon/size/32/${bookmark.url}`;
-    
+    favicon.src = 'icons/icon-inactive.svg'; // Default icon
+    favicon.dataset.url = bookmark.url; // Store URL to match with response
+
+    // Request favicon from background script
+    chrome.runtime.sendMessage({ type: 'get_favicon', url: bookmark.url });
+
     const tooltip = document.createElement('span');
     tooltip.className = 'tooltip';
     tooltip.textContent = bookmark.title;
@@ -46,12 +50,22 @@ document.addEventListener('DOMContentLoaded', () => {
       bookmarksContainer.appendChild(bookmarkElement);
     });
   });
-});
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
-  } else if (document.visibilityState === 'visible') {
-    chrome.runtime.sendMessage({ type: 'sidepanel_opened' });
-  }
+  // Listen for favicon responses
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'favicon_response' && message.dataUrl) {
+      const img = document.querySelector(`img[data-url="${message.url}"]`);
+      if (img) {
+        img.src = message.dataUrl;
+      }
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
+    } else if (document.visibilityState === 'visible') {
+      chrome.runtime.sendMessage({ type: 'sidepanel_opened' });
+    }
+  });
 });

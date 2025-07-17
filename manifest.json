@@ -4,6 +4,9 @@
   "version": "1.0",
   "description": "A simple vertical bookmarks extension.",
   "permissions": ["sidePanel", "bookmarks", "storage"],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "side_panel": {
     "default_path": "sidepanel.html"
   },
