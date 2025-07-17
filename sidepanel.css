@@ -1,0 +1,68 @@
+body {
+  /* A dusty pink color sampled from the image */
+  background-color: #EFE5E7;
+  margin: 0;
+  font-family: sans-serif;
+}
+
+.grid-container {
+  display: grid;
+  /* Adjust grid columns to fit the new item size */
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.bookmark-item {
+  position: relative;
+  /* New dimensions based on the image */
+  width: 88px;
+  height: 68px;
+  /* A slightly lighter pink for the items */
+  background-color: #F8F3F4;
+  /* More pronounced border-radius */
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Removed the default box-shadow for a flatter look */
+  box-shadow: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bookmark-item:hover {
+  transform: translateY(-2px);
+  /* A subtle shadow on hover for feedback */
+  box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+}
+
+.bookmark-item img {
+  width: 32px;
+  height: 32px;
+}
+
+.bookmark-item .tooltip {
+  visibility: hidden;
+  width: max-content;
+  max-width: 200px; /* Prevent long tooltips from breaking layout */
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 10px;
+  position: absolute;
+  z-index: 1;
+  bottom: 110%; /* Adjust position slightly */
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-item:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}

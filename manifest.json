@@ -2,13 +2,19 @@
   "manifest_version": 3,
   "name": "Vertical Bookmarks",
   "version": "1.0",
-  "description": "A simple extension to display bookmarks in a vertical sidebar.",
-  "permissions": ["bookmarks", "storage", "scripting"],
-  "host_permissions": ["<all_urls>"],
-  "background": {
-    "service_worker": "background.js"
+  "description": "A simple vertical bookmarks extension.",
+  "permissions": ["sidePanel", "bookmarks", "storage"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "action": {
+    "default_icon": {
+      "16": "icons/icon-inactive.svg",
+      "32": "icons/icon-inactive.svg"
+    },
     "default_title": "Toggle Vertical Bookmarks"
+  },
+  "background": {
+    "service_worker": "background.js"
   }
-} 
+}
