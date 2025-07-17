@@ -16,6 +16,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Edit mode state
   let isEditMode = false;
   let isDarkMode = false;
+  
+  // Drag & drop state
+  let isDragging = false;
+  let draggedElement = null;
+  let dragStartIndex = -1;
+  let longPressTimer = null;
+  let dragOffset = { x: 0, y: 0 };
+  let lastInsertionIndex = -1; // Track last insertion to prevent unnecessary updates
+  let dragMoveThrottle = null;
 
   // Get favorites from storage
   function getFavorites() {
@@ -50,6 +59,212 @@ document.addEventListener('DOMContentLoaded', () => {
     isDarkMode = theme === 'dark';
     document.body.classList.toggle('dark-mode', isDarkMode);
     themeToggle.classList.toggle('dark', isDarkMode);
+  }
+
+  // Drag & Drop functions
+  function startDrag(element, event) {
+    isDragging = true;
+    draggedElement = element;
+    dragStartIndex = Array.from(favoritesContainer.children).indexOf(element);
+    
+    const rect = element.getBoundingClientRect();
+    dragOffset.x = event.clientX - rect.left;
+    dragOffset.y = event.clientY - rect.top;
+    
+    // Add dragging class
+    element.classList.add('dragging');
+    favoritesContainer.classList.add('drag-active');
+    
+    // Create ghost element
+    const ghost = element.cloneNode(true);
+    ghost.classList.add('drag-ghost');
+    ghost.style.position = 'fixed';
+    ghost.style.left = (event.clientX - dragOffset.x) + 'px';
+    ghost.style.top = (event.clientY - dragOffset.y) + 'px';
+    ghost.style.zIndex = '1000';
+    ghost.style.pointerEvents = 'none';
+    document.body.appendChild(ghost);
+    
+    // Hide original element
+    element.style.opacity = '0.3';
+    
+    // Add global event listeners
+    document.addEventListener('mousemove', handleDragMove);
+    document.addEventListener('mouseup', handleDragEnd);
+    
+    // Prevent default drag behavior
+    event.preventDefault();
+  }
+
+  function handleDragMove(event) {
+    if (!isDragging || !draggedElement) return;
+    
+    const ghost = document.querySelector('.drag-ghost');
+    if (ghost) {
+      ghost.style.left = (event.clientX - dragOffset.x) + 'px';
+      ghost.style.top = (event.clientY - dragOffset.y) + 'px';
+    }
+    
+    // Throttle gap updates to prevent flickering
+    if (dragMoveThrottle) {
+      clearTimeout(dragMoveThrottle);
+    }
+    
+    dragMoveThrottle = setTimeout(() => {
+      const insertionPoint = getInsertionPoint(event.clientX, event.clientY);
+      if (insertionPoint && insertionPoint.index !== lastInsertionIndex) {
+        lastInsertionIndex = insertionPoint.index;
+        createDropGap(insertionPoint);
+      }
+    }, 16); // ~60fps
+  }
+
+  function getInsertionPoint(x, y) {
+    const container = favoritesContainer;
+    const containerRect = container.getBoundingClientRect();
+    const items = Array.from(container.children).filter(child => 
+      child !== draggedElement && child.classList.contains('favorite-item')
+    );
+    
+    if (items.length === 0) {
+      return { index: 0, items: [] };
+    }
+    
+    // Find the closest item to the mouse position
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+    
+    items.forEach((item, index) => {
+      const itemRect = item.getBoundingClientRect();
+      const itemCenterX = itemRect.left + itemRect.width / 2;
+      const itemCenterY = itemRect.top + itemRect.height / 2;
+      
+      const distance = Math.sqrt(
+        Math.pow(x - itemCenterX, 2) + Math.pow(y - itemCenterY, 2)
+      );
+      
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+    
+    // Determine if we should insert before or after the closest item
+    const closestItem = items[closestIndex];
+    const closestRect = closestItem.getBoundingClientRect();
+    const closestCenterX = closestRect.left + closestRect.width / 2;
+    
+    // If mouse is to the left of center, insert before; if to the right, insert after
+    const insertIndex = x < closestCenterX ? closestIndex : closestIndex + 1;
+    
+    return {
+      index: Math.min(insertIndex, items.length),
+      items: items
+    };
+  }
+
+  function createDropGap(insertionPoint) {
+    const { index, items } = insertionPoint;
+    
+    // Update classes only where needed to prevent flickering
+    items.forEach((item, i) => {
+      const shouldPush = i >= index;
+      const isPushing = item.classList.contains('push-right');
+      
+      if (shouldPush && !isPushing) {
+        item.classList.add('push-right');
+      } else if (!shouldPush && isPushing) {
+        item.classList.remove('push-right');
+      }
+    });
+  }
+
+  function clearDropGaps() {
+    const items = favoritesContainer.querySelectorAll('.favorite-item');
+    items.forEach(item => {
+      item.classList.remove('push-right');
+    });
+  }
+
+  function handleDragEnd(event) {
+    if (!isDragging) return;
+    
+    isDragging = false;
+    
+    // Remove ghost element
+    const ghost = document.querySelector('.drag-ghost');
+    if (ghost) {
+      ghost.remove();
+    }
+    
+    // Find final insertion point and move element
+    const insertionPoint = getInsertionPoint(event.clientX, event.clientY);
+    if (insertionPoint) {
+      const { index, items } = insertionPoint;
+      
+      // Remove dragged element from DOM temporarily
+      draggedElement.remove();
+      
+      // Insert at the correct position
+      if (index >= items.length) {
+        favoritesContainer.appendChild(draggedElement);
+      } else {
+        favoritesContainer.insertBefore(draggedElement, items[index]);
+      }
+    }
+    
+    // Clear all visual effects
+    clearDropGaps();
+    
+    // Restore original element
+    if (draggedElement) {
+      draggedElement.style.opacity = '1';
+      draggedElement.classList.remove('dragging');
+    }
+    
+    favoritesContainer.classList.remove('drag-active');
+    
+    // Update favorites order based on current DOM order
+    const newOrder = Array.from(favoritesContainer.children)
+      .filter(child => child.classList.contains('favorite-item'))
+      .map(child => {
+        const link = child.querySelector('.favorite-link');
+        const url = link.href;
+        const title = child.querySelector('.tooltip').textContent.replace('Go to ', '');
+        return { title, url };
+      });
+    
+    saveFavorites(newOrder);
+    
+    // Remove global event listeners
+    document.removeEventListener('mousemove', handleDragMove);
+    document.removeEventListener('mouseup', handleDragEnd);
+    
+    // Clear throttle
+    if (dragMoveThrottle) {
+      clearTimeout(dragMoveThrottle);
+      dragMoveThrottle = null;
+    }
+    
+    // Reset drag state
+    draggedElement = null;
+    dragStartIndex = -1;
+    lastInsertionIndex = -1;
+  }
+
+  function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.favorite-item:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
   }
 
   // Create context menu
@@ -130,25 +345,64 @@ document.addEventListener('DOMContentLoaded', () => {
       createContextMenu(bookmark, rect.left, rect.bottom);
     });
 
+    // Left arrow button (only visible in edit mode)
+    const leftArrowBtn = document.createElement('button');
+    leftArrowBtn.className = 'arrow-btn arrow-left';
+    leftArrowBtn.textContent = '<';
+    leftArrowBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveBookmarkPosition(bookmark, -1);
+    });
+
+    // Right arrow button (only visible in edit mode)
+    const rightArrowBtn = document.createElement('button');
+    rightArrowBtn.className = 'arrow-btn arrow-right';
+    rightArrowBtn.textContent = '>';
+    rightArrowBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      moveBookmarkPosition(bookmark, 1);
+    });
+
     link.appendChild(favicon);
     link.appendChild(tooltip);
     
     favoriteItem.appendChild(link);
     favoriteItem.appendChild(menuBtn);
+    favoriteItem.appendChild(leftArrowBtn);
+    favoriteItem.appendChild(rightArrowBtn);
 
     // Handle click behavior based on mode
     favoriteItem.addEventListener('click', (e) => {
-      if (!isEditMode && !e.target.classList.contains('menu-btn')) {
+      if (!isEditMode && !e.target.classList.contains('menu-btn') && !isDragging) {
         // In normal mode, clicking anywhere opens the link
         window.open(bookmark.url, '_blank');
       }
     });
 
+    // Handle mouse events for drag & drop
+    favoriteItem.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // Left mouse button
+        longPressTimer = setTimeout(() => {
+          startDrag(favoriteItem, e);
+        }, 200); // 200ms long press
+      }
+    });
+
+    favoriteItem.addEventListener('mouseup', () => {
+      clearTimeout(longPressTimer);
+    });
+
+    favoriteItem.addEventListener('mouseleave', () => {
+      clearTimeout(longPressTimer);
+    });
+
     // Handle long press for mobile
-    let longPressTimer;
+    let mobileLongPressTimer;
     favoriteItem.addEventListener('touchstart', (e) => {
       if (!isEditMode) {
-        longPressTimer = setTimeout(() => {
+        mobileLongPressTimer = setTimeout(() => {
           e.preventDefault();
           const touch = e.touches[0];
           createContextMenu(bookmark, touch.clientX, touch.clientY);
@@ -157,11 +411,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     favoriteItem.addEventListener('touchend', () => {
-      clearTimeout(longPressTimer);
+      clearTimeout(mobileLongPressTimer);
     });
 
     favoriteItem.addEventListener('touchmove', () => {
-      clearTimeout(longPressTimer);
+      clearTimeout(mobileLongPressTimer);
     });
 
     return favoriteItem;
@@ -291,14 +545,39 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateEditModeStyles() {
     const favoritesSection = document.getElementById('favorites-section');
     const menuBtns = document.querySelectorAll('.menu-btn');
+    const arrowBtns = document.querySelectorAll('.arrow-btn');
     
     if (isEditMode) {
       favoritesSection.classList.add('edit-mode');
       menuBtns.forEach(btn => btn.style.display = 'flex');
+      arrowBtns.forEach(btn => btn.style.display = 'flex');
     } else {
       favoritesSection.classList.remove('edit-mode');
       menuBtns.forEach(btn => btn.style.display = 'none');
+      arrowBtns.forEach(btn => btn.style.display = 'none');
     }
+  }
+
+  // Function to move bookmark position
+  async function moveBookmarkPosition(bookmark, direction) {
+    const favorites = await getFavorites();
+    const currentIndex = favorites.findIndex(fav => fav.url === bookmark.url);
+    
+    if (currentIndex === -1) return;
+    
+    const newIndex = currentIndex + direction;
+    
+    // Check bounds
+    if (newIndex < 0 || newIndex >= favorites.length) return;
+    
+    // Swap positions
+    const temp = favorites[currentIndex];
+    favorites[currentIndex] = favorites[newIndex];
+    favorites[newIndex] = temp;
+    
+    // Save and re-render
+    saveFavorites(favorites);
+    renderFavorites();
   }
 
   // Function to add current page to favorites
