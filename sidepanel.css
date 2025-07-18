@@ -801,7 +801,7 @@ body.dark-mode {
 .add-to-favorites-btn {
   background: none;
   border: none;
-  color: #007AFF;
+  color: #666;
   cursor: pointer;
   font-size: 14px;
   padding: 2px 6px;
@@ -812,16 +812,16 @@ body.dark-mode {
 }
 
 .add-to-favorites-btn:hover {
-  color: #0056CC;
+  color: #333;
   background-color: #f8f8f8;
 }
 
 .dark-mode .add-to-favorites-btn {
-  color: #007AFF;
+  color: #aaa;
 }
 
 .dark-mode .add-to-favorites-btn:hover {
-  color: #4A9EFF;
+  color: #ddd;
   background-color: #2a2a2a;
 }
 

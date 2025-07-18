@@ -1083,6 +1083,12 @@ document.addEventListener('DOMContentLoaded', () => {
       clearTimeout(longPressTimer);
     });
 
+    // Handle right-click context menu
+    favoriteItem.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      createContextMenu(bookmark, e.clientX, e.clientY);
+    });
+
     // Handle long press for mobile
     let mobileLongPressTimer;
     favoriteItem.addEventListener('touchstart', (e) => {
@@ -1189,7 +1195,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Add to favorites button
       const addToFavoritesBtn = document.createElement('button');
       addToFavoritesBtn.className = 'add-to-favorites-btn';
-      addToFavoritesBtn.textContent = '+';
+      addToFavoritesBtn.textContent = '★';
       addToFavoritesBtn.title = 'Add to My Picks';
       
       addToFavoritesBtn.addEventListener('click', async (e) => {
