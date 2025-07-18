@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   const addBtn = document.getElementById('add-btn');
   const refreshBtn = document.getElementById('refresh-btn');
+  const searchInput = document.getElementById('search-input');
 
   const themeToggle = document.getElementById('theme-toggle');
 
@@ -2403,4 +2404,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize external drag & drop when DOM is ready
   initializeExternalDragDrop();
+
+  // Search functionality
+  function filterBookmarks(query) {
+    const lowerCaseQuery = query.toLowerCase().trim();
+    
+    // Select all bookmark items and folders across all sections
+    const allItems = document.querySelectorAll('.bookmark-item-tree, .bookmark-folder');
+    
+    // Track visibility of folders to manage parent visibility
+    const folderVisibility = new Map();
+
+    allItems.forEach(item => {
+      let isVisible = false;
+      const titleElement = item.querySelector('.bookmark-title, .folder-title');
+      const title = titleElement ? titleElement.textContent.toLowerCase() : '';
+      
+      if (item.classList.contains('bookmark-item-tree')) {
+        // It's a bookmark
+        const linkElement = item.querySelector('a.bookmark-link');
+        const url = linkElement ? (linkElement.href || '').toLowerCase() : '';
+        isVisible = title.includes(lowerCaseQuery) || url.includes(lowerCaseQuery);
+      } else if (item.classList.contains('bookmark-folder')) {
+        // For folders, we check their title. Children visibility will be handled later.
+        isVisible = title.includes(lowerCaseQuery);
+        folderVisibility.set(item, isVisible); // Initially set based on title match
+      }
+      
+      item.style.display = isVisible ? '' : 'none';
+    });
+
+    // Second pass: Adjust folder visibility based on children
+    // Iterate in reverse to ensure children are processed before parents
+    const allFolders = Array.from(document.querySelectorAll('.bookmark-folder')).reverse();
+    
+    allFolders.forEach(folder => {
+      let hasVisibleChild = false;
+      const childrenContainer = folder.querySelector('.folder-children');
+      if (childrenContainer) {
+        // Check if any direct child is visible
+        const children = childrenContainer.querySelectorAll(':scope > .bookmark-item-tree, :scope > .bookmark-folder');
+        for (const child of children) {
+          if (child.style.display !== 'none') {
+            hasVisibleChild = true;
+            break;
+          }
+        }
+      }
+      
+      // If a folder has a visible child, it should be visible too
+      if (hasVisibleChild) {
+        folderVisibility.set(folder, true);
+        folder.style.display = '';
+        
+        // Also expand the folder to show the results
+        const expandIcon = folder.querySelector('.expand-icon');
+        const folderChildren = folder.querySelector('.folder-children');
+        if (expandIcon && folderChildren) {
+            folderChildren.style.display = 'block';
+            expandIcon.textContent = '▼';
+        }
+      } else if (!folderVisibility.get(folder)) {
+        // If it doesn't match the query and has no visible children
+        folder.style.display = 'none';
+      }
+    });
+
+    // If search query is empty, restore all and collapse folders
+    if (lowerCaseQuery === '') {
+      allItems.forEach(item => {
+        item.style.display = '';
+      });
+      document.querySelectorAll('.folder-children').forEach(container => {
+        container.style.display = 'none';
+        const expandIcon = container.previousElementSibling.querySelector('.expand-icon');
+        if (expandIcon) {
+          expandIcon.textContent = '▶';
+        }
+      });
+    }
+  }
+
+  searchInput.addEventListener('input', (e) => {
+    filterBookmarks(e.target.value);
+  });
 });
