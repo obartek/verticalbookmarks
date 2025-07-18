@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const otherBookmarksContainer = document.getElementById('other-bookmarks-container');
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   const addBtn = document.getElementById('add-btn');
+  const refreshBtn = document.getElementById('refresh-btn');
 
   const themeToggle = document.getElementById('theme-toggle');
 
@@ -1568,7 +1569,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Add button in header
   addBtn.addEventListener('click', addCurrentPageToFavorites);
 
-
+  // Refresh button
+  refreshBtn.addEventListener('click', async () => {
+    // Prevent multiple clicks during refresh
+    if (refreshBtn.classList.contains('refreshing')) {
+      return;
+    }
+    
+    await refreshAllData();
+  });
 
   // Theme toggle
   themeToggle.addEventListener('click', () => {
@@ -1588,6 +1597,65 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.bookmarks.getTree(async (bookmarkTree) => {
       await renderAllBookmarks(bookmarkTree);
     });
+  }
+
+  // Function to refresh all data (My Picks, bookmarks, and favicons)
+  async function refreshAllData() {
+    // Add refreshing animation
+    refreshBtn.classList.add('refreshing');
+    
+    try {
+      // First, reset all favicon to default icons
+      const allFaviconImages = document.querySelectorAll('img[data-url]');
+      allFaviconImages.forEach(img => {
+        img.src = 'icons/logo/logo-16-inactive.png';
+      });
+      
+      // Clear favicon cache by re-requesting all favicons
+      const favorites = await getFavorites();
+      const allBookmarks = [];
+      
+      // Collect all bookmark URLs from favorites
+      favorites.forEach(fav => {
+        if (fav.url) {
+          allBookmarks.push(fav.url);
+        }
+      });
+      
+      // Collect all bookmark URLs from bookmark tree
+      chrome.bookmarks.getTree(async (bookmarkTree) => {
+        function collectBookmarkUrls(nodes) {
+          nodes.forEach(node => {
+            if (node.url) {
+              allBookmarks.push(node.url);
+            }
+            if (node.children) {
+              collectBookmarkUrls(node.children);
+            }
+          });
+        }
+        
+        collectBookmarkUrls(bookmarkTree);
+        
+        // Refresh all UI components first
+        await renderAllBookmarks(bookmarkTree);
+        await renderFavorites();
+        
+        // Then request fresh favicons for all URLs
+        const uniqueUrls = [...new Set(allBookmarks)];
+        uniqueUrls.forEach(url => {
+          chrome.runtime.sendMessage({ type: 'get_favicon', url: url, force_refresh: true });
+        });
+        
+        // Remove refreshing animation after a short delay
+        setTimeout(() => {
+          refreshBtn.classList.remove('refreshing');
+        }, 1500); // Slightly longer delay to allow favicons to load
+      });
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      refreshBtn.classList.remove('refreshing');
+    }
   }
 
   // Initialize

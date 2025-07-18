@@ -145,6 +145,33 @@ body.dark-mode {
   gap: 4px;
 }
 
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px !important;
+  min-width: 28px;
+}
+
+.refresh-icon {
+  font-size: 16px;
+  font-weight: bold;
+  transition: transform 0.3s ease;
+}
+
+.refresh-btn:hover .refresh-icon {
+  transform: rotate(180deg);
+}
+
+.refresh-btn.refreshing .refresh-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 #bookmarks-bar-section h3, #other-bookmarks-section h3 {
   margin: 0;
   padding: 12px 16px 8px 16px;

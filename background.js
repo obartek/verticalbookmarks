@@ -117,7 +117,7 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
   }
 
   if (message.type === 'get_favicon') {
-    const tryGetFavicon = async (url) => {
+    const tryGetFavicon = async (url, forceRefresh = false) => {
       const domain = new URL(url).hostname;
       
       // First try to get favicon from tab if it's the current tab
@@ -173,7 +173,7 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
       return null;
     };
     
-    tryGetFavicon(message.url)
+    tryGetFavicon(message.url, message.force_refresh)
       .then(dataUrl => {
         if (dataUrl) {
           chrome.runtime.sendMessage({
