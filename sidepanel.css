@@ -388,6 +388,141 @@ body.dark-mode {
   background-color: #fff5f5;
 }
 
+.context-menu-separator {
+  height: 1px;
+  background-color: #ddd;
+  margin: 4px 0;
+}
+
+.dark-mode .context-menu-separator {
+  background-color: #444;
+}
+
+.delete-item {
+  color: #ff4444 !important;
+}
+
+.dark-mode .delete-item {
+  color: #ff6b6b !important;
+}
+
+/* Dialog styles */
+.bookmark-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.dialog-content {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 300px;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 1;
+}
+
+.dark-mode .dialog-content {
+  background: #2a2a2a;
+  color: #e5e5e5;
+}
+
+.dialog-content h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dialog-content label {
+  display: block;
+  margin: 12px 0 4px 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+  color: #333;
+  box-sizing: border-box;
+}
+
+.dark-mode .dialog-input {
+  background: #3a3a3a;
+  border-color: #555;
+  color: #e5e5e5;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: #007AFF;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.dialog-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.cancel-btn {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.cancel-btn:hover {
+  background: #e8e8e8;
+}
+
+.save-btn {
+  background: #007AFF;
+  color: white;
+}
+
+.save-btn:hover {
+  background: #0056CC;
+}
+
+.dark-mode .cancel-btn {
+  background: #444;
+  color: #ccc;
+}
+
+.dark-mode .cancel-btn:hover {
+  background: #555;
+}
+
 
 
 /* Bookmarks section - tree layout */

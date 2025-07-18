@@ -37,6 +37,41 @@ const updateIcon = async (windowId) => {
   chrome.action.setIcon({ path: iconPath, windowId: windowId });
 };
 
+// Function to notify side panel about bookmark changes
+const notifyBookmarkChange = () => {
+  chrome.runtime.sendMessage({
+    type: 'bookmarks_changed'
+  }).catch(() => {
+    // Ignore errors if side panel is not open
+  });
+};
+
+// Listen for bookmark changes and notify side panel
+chrome.bookmarks.onCreated.addListener((id, bookmark) => {
+  console.log('Bookmark created:', bookmark);
+  notifyBookmarkChange();
+});
+
+chrome.bookmarks.onRemoved.addListener((id, removeInfo) => {
+  console.log('Bookmark removed:', id);
+  notifyBookmarkChange();
+});
+
+chrome.bookmarks.onChanged.addListener((id, changeInfo) => {
+  console.log('Bookmark changed:', id, changeInfo);
+  notifyBookmarkChange();
+});
+
+chrome.bookmarks.onMoved.addListener((id, moveInfo) => {
+  console.log('Bookmark moved:', id, moveInfo);
+  notifyBookmarkChange();
+});
+
+chrome.bookmarks.onChildrenReordered.addListener((id, reorderInfo) => {
+  console.log('Bookmark children reordered:', id, reorderInfo);
+  notifyBookmarkChange();
+});
+
 // Update icon when a new window is focused
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId !== chrome.windows.WINDOW_ID_NONE) {

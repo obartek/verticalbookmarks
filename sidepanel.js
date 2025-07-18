@@ -269,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
   }
 
-  // Create context menu
+  // Create context menu for My Picks
   function createContextMenu(bookmark, x, y) {
     // Remove existing context menu if any
     const existingMenu = document.querySelector('.context-menu');
@@ -336,9 +336,300 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!contextMenu.contains(e.target)) {
         contextMenu.remove();
         document.removeEventListener('click', closeMenu);
+        document.removeEventListener('contextmenu', closeMenu);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    
+    // Add listeners with a small delay to avoid immediate closure
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+      document.addEventListener('contextmenu', closeMenu);
+    }, 10);
+  }
+
+  // Create Chrome-style context menu for bookmarks
+  function createChromeBookmarkContextMenu(bookmark, x, y, isFolder = false) {
+    // Remove existing context menu if any
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+
+    const contextMenu = document.createElement('div');
+    contextMenu.className = 'context-menu chrome-bookmark-menu';
+    
+    // Temporarily position menu to calculate its size
+    contextMenu.style.left = x + 'px';
+    contextMenu.style.top = y + 'px';
+    contextMenu.style.visibility = 'hidden';
+    document.body.appendChild(contextMenu);
+
+    if (!isFolder) {
+      // Open in New Tab
+      const openNewTabItem = document.createElement('div');
+      openNewTabItem.className = 'context-menu-item';
+      openNewTabItem.textContent = 'Open in New Tab';
+      openNewTabItem.addEventListener('click', () => {
+        chrome.tabs.create({ url: bookmark.url });
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(openNewTabItem);
+
+      // Open in New Window
+      const openNewWindowItem = document.createElement('div');
+      openNewWindowItem.className = 'context-menu-item';
+      openNewWindowItem.textContent = 'Open in New Window';
+      openNewWindowItem.addEventListener('click', () => {
+        chrome.windows.create({ url: bookmark.url });
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(openNewWindowItem);
+
+      // Open in Incognito Window
+      const openIncognitoItem = document.createElement('div');
+      openIncognitoItem.className = 'context-menu-item';
+      openIncognitoItem.textContent = 'Open in Incognito Window';
+      openIncognitoItem.addEventListener('click', () => {
+        chrome.windows.create({ url: bookmark.url, incognito: true });
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(openIncognitoItem);
+
+      // Separator
+      const separator1 = document.createElement('div');
+      separator1.className = 'context-menu-separator';
+      contextMenu.appendChild(separator1);
+    }
+
+    // Edit...
+    const editItem = document.createElement('div');
+    editItem.className = 'context-menu-item';
+    editItem.textContent = 'Edit...';
+    editItem.addEventListener('click', () => {
+      showEditDialog(bookmark, isFolder);
+      contextMenu.remove();
+    });
+    contextMenu.appendChild(editItem);
+
+    // Separator
+    const separator2 = document.createElement('div');
+    separator2.className = 'context-menu-separator';
+    contextMenu.appendChild(separator2);
+
+    // Delete
+    const deleteItem = document.createElement('div');
+    deleteItem.className = 'context-menu-item delete-item';
+    deleteItem.textContent = 'Delete';
+    deleteItem.addEventListener('click', () => {
+      if (confirm(`Are you sure you want to delete "${bookmark.title}"?`)) {
+        chrome.bookmarks.remove(bookmark.id, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Error deleting bookmark:', chrome.runtime.lastError);
+          } else {
+            // Refresh will happen automatically via bookmark change listener
+          }
+        });
+      }
+      contextMenu.remove();
+    });
+    contextMenu.appendChild(deleteItem);
+
+    if (!isFolder) {
+      // Separator
+      const separator4 = document.createElement('div');
+      separator4.className = 'context-menu-separator';
+      contextMenu.appendChild(separator4);
+
+      // Add Folder...
+      const addFolderItem = document.createElement('div');
+      addFolderItem.className = 'context-menu-item';
+      addFolderItem.textContent = 'Add Folder...';
+      addFolderItem.addEventListener('click', () => {
+        showAddFolderDialog(bookmark.parentId);
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(addFolderItem);
+    }
+
+    // Calculate menu dimensions and adjust position if needed
+    const menuRect = contextMenu.getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    
+    let finalX = x;
+    let finalY = y;
+    
+    // Check if menu goes beyond right edge of screen
+    if (x + menuRect.width > windowWidth) {
+      finalX = windowWidth - menuRect.width - 10; // 10px margin from edge
+    }
+    
+    // Check if menu goes beyond bottom edge of screen
+    if (y + menuRect.height > windowHeight) {
+      finalY = windowHeight - menuRect.height - 10; // 10px margin from edge
+    }
+    
+    // Apply final position and make visible
+    contextMenu.style.left = finalX + 'px';
+    contextMenu.style.top = finalY + 'px';
+    contextMenu.style.visibility = 'visible';
+
+    // Close menu when clicking outside
+    const closeMenu = (e) => {
+      if (!contextMenu.contains(e.target)) {
+        contextMenu.remove();
+        document.removeEventListener('click', closeMenu);
+        document.removeEventListener('contextmenu', closeMenu);
+      }
+    };
+    
+    // Add listeners with a small delay to avoid immediate closure
+    setTimeout(() => {
+      document.addEventListener('click', closeMenu);
+      document.addEventListener('contextmenu', closeMenu);
+    }, 10);
+  }
+
+  // Show edit dialog for bookmarks
+  function showEditDialog(bookmark, isFolder = false) {
+    const dialog = document.createElement('div');
+    dialog.className = 'bookmark-dialog';
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    
+    const content = document.createElement('div');
+    content.className = 'dialog-content';
+    
+    const title = document.createElement('h3');
+    title.textContent = isFolder ? 'Edit Folder' : 'Edit Bookmark';
+    content.appendChild(title);
+    
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Name:';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = bookmark.title;
+    nameInput.className = 'dialog-input';
+    content.appendChild(nameLabel);
+    content.appendChild(nameInput);
+    
+    if (!isFolder) {
+      const urlLabel = document.createElement('label');
+      urlLabel.textContent = 'URL:';
+      const urlInput = document.createElement('input');
+      urlInput.type = 'text';
+      urlInput.value = bookmark.url;
+      urlInput.className = 'dialog-input';
+      content.appendChild(urlLabel);
+      content.appendChild(urlInput);
+    }
+    
+    const buttons = document.createElement('div');
+    buttons.className = 'dialog-buttons';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'dialog-btn cancel-btn';
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+    });
+    
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.className = 'dialog-btn save-btn';
+    saveBtn.addEventListener('click', () => {
+      const updates = { title: nameInput.value };
+      if (!isFolder) {
+        updates.url = urlInput.value;
+      }
+      
+      chrome.bookmarks.update(bookmark.id, updates, () => {
+        if (chrome.runtime.lastError) {
+          console.error('Error updating bookmark:', chrome.runtime.lastError);
+        } else {
+          // Refresh will happen automatically via bookmark change listener
+        }
+      });
+      
+      document.body.removeChild(dialog);
+    });
+    
+    buttons.appendChild(cancelBtn);
+    buttons.appendChild(saveBtn);
+    content.appendChild(buttons);
+    
+    dialog.appendChild(overlay);
+    dialog.appendChild(content);
+    document.body.appendChild(dialog);
+    
+    nameInput.focus();
+    nameInput.select();
+  }
+
+
+
+  // Show add folder dialog
+  function showAddFolderDialog(parentId) {
+    const dialog = document.createElement('div');
+    dialog.className = 'bookmark-dialog';
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    
+    const content = document.createElement('div');
+    content.className = 'dialog-content';
+    
+    const title = document.createElement('h3');
+    title.textContent = 'Add Folder';
+    content.appendChild(title);
+    
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Name:';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'New folder';
+    nameInput.className = 'dialog-input';
+    content.appendChild(nameLabel);
+    content.appendChild(nameInput);
+    
+    const buttons = document.createElement('div');
+    buttons.className = 'dialog-buttons';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'dialog-btn cancel-btn';
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+    });
+    
+    const createBtn = document.createElement('button');
+    createBtn.textContent = 'Create';
+    createBtn.className = 'dialog-btn save-btn';
+    createBtn.addEventListener('click', () => {
+      if (nameInput.value.trim()) {
+        chrome.bookmarks.create({
+          parentId: parentId,
+          title: nameInput.value.trim()
+        }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Error creating folder:', chrome.runtime.lastError);
+          }
+        });
+      }
+      
+      document.body.removeChild(dialog);
+    });
+    
+    buttons.appendChild(cancelBtn);
+    buttons.appendChild(createBtn);
+    content.appendChild(buttons);
+    
+    dialog.appendChild(overlay);
+    dialog.appendChild(content);
+    document.body.appendChild(dialog);
+    
+    nameInput.focus();
   }
 
   // Create favorite bookmark element
@@ -478,6 +769,12 @@ document.addEventListener('DOMContentLoaded', () => {
         childrenContainer.style.display = isExpanded ? 'none' : 'block';
         expandIcon.textContent = isExpanded ? '▶' : '▼';
       });
+
+      // Add right-click context menu for folders
+      folderHeader.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        createChromeBookmarkContextMenu(bookmark, e.clientX, e.clientY, true);
+      });
       
       item.appendChild(folderHeader);
       item.appendChild(childrenContainer);
@@ -522,6 +819,12 @@ document.addEventListener('DOMContentLoaded', () => {
       link.appendChild(favicon);
       link.appendChild(title);
       link.appendChild(addToFavoritesBtn);
+
+      // Add right-click context menu for bookmarks
+      link.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        createChromeBookmarkContextMenu(bookmark, e.clientX, e.clientY, false);
+      });
       
       item.appendChild(link);
       return { element: item };
@@ -706,6 +1009,13 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(savedTheme);
   }
 
+  // Function to refresh bookmarks
+  function refreshBookmarks() {
+    chrome.bookmarks.getTree((bookmarkTree) => {
+      renderAllBookmarks(bookmarkTree);
+    });
+  }
+
   // Initialize
   chrome.bookmarks.getTree((bookmarkTree) => {
     renderAllBookmarks(bookmarkTree);
@@ -714,13 +1024,17 @@ document.addEventListener('DOMContentLoaded', () => {
   renderFavorites();
   initializeTheme();
 
-  // Listen for favicon responses
+  // Listen for favicon responses and bookmark changes
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === 'favicon_response' && message.dataUrl) {
       const imgs = document.querySelectorAll(`img[data-url="${message.url}"]`);
       imgs.forEach(img => {
         img.src = message.dataUrl;
       });
+    } else if (message.type === 'bookmarks_changed') {
+      // Refresh bookmarks when changes are detected
+      console.log('Bookmarks changed, refreshing...');
+      refreshBookmarks();
     }
   });
 
@@ -728,6 +1042,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
+      // Close any open context menu when panel becomes hidden
+      const existingMenu = document.querySelector('.context-menu');
+      if (existingMenu) {
+        existingMenu.remove();
+      }
     } else if (document.visibilityState === 'visible') {
       chrome.runtime.sendMessage({ type: 'sidepanel_opened' });
     }
@@ -742,4 +1061,25 @@ document.addEventListener('DOMContentLoaded', () => {
 // Also notify when the panel is closed if the page is hidden
 window.addEventListener('pagehide', () => {
   chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
+});
+
+// Close any open context menu when the panel loses focus
+window.addEventListener('blur', () => {
+  const existingMenu = document.querySelector('.context-menu');
+  if (existingMenu) {
+    existingMenu.remove();
+  }
+});
+
+// Additional listener for focus out events
+document.addEventListener('focusout', (e) => {
+  // Check if the new focus target is outside the side panel
+  setTimeout(() => {
+    if (!document.hasFocus()) {
+      const existingMenu = document.querySelector('.context-menu');
+      if (existingMenu) {
+        existingMenu.remove();
+      }
+    }
+  }, 100);
 });
