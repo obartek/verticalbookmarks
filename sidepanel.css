@@ -234,6 +234,21 @@ body.dark-mode {
   pointer-events: none;
 }
 
+/* Drag ghost for bookmarks - no rotation */
+.bookmark-item-tree.drag-ghost,
+.bookmark-folder.drag-ghost {
+  transform: scale(1.05);
+  opacity: 0.9;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.dark-mode .bookmark-item-tree.drag-ghost,
+.dark-mode .bookmark-folder.drag-ghost {
+  background: rgba(42, 42, 42, 0.95);
+}
+
 .drag-active .favorite-item {
   transition: transform 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
   will-change: transform;
@@ -674,10 +689,59 @@ body.dark-mode {
 /* Bookmarks section - tree layout */
 .tree-container {
   padding: 8px;
+  position: relative; /* For drop indicator positioning */
 }
 
 .bookmark-folder {
   margin-bottom: 4px;
+}
+
+/* Bookmarks drag and drop styles */
+.bookmark-item-tree {
+  margin-bottom: 2px;
+  transition: opacity 0.2s ease;
+}
+
+.bookmark-item-tree.dragging {
+  opacity: 0.3;
+}
+
+/* Drop indicator line */
+.drop-indicator {
+  position: absolute;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    #007AFF 10%, 
+    #007AFF 90%, 
+    transparent 100%
+  );
+  border-radius: 1.5px;
+  box-shadow: 0 0 8px rgba(0, 122, 255, 0.8);
+  pointer-events: none;
+  z-index: 999;
+  transition: opacity 0.15s ease;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scaleX(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.bookmark-folder {
+  margin-bottom: 4px;
+  transition: opacity 0.2s ease;
+}
+
+.bookmark-folder.dragging {
+  opacity: 0.3;
 }
 
 .folder-header {
@@ -781,6 +845,7 @@ body.dark-mode {
 .folder-children {
   margin-left: 20px;
   margin-top: 4px;
+  position: relative; /* For drop indicator positioning */
 }
 
 .bookmark-item-tree {

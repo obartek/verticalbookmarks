@@ -24,10 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let isDragging = false;
   let draggedElement = null;
   let dragStartIndex = -1;
-  let longPressTimer = null;
   let dragOffset = { x: 0, y: 0 };
-  let lastInsertionIndex = -1; // Track last insertion to prevent unnecessary updates
-  let dragMoveThrottle = null;
+  let draggedBookmarkNode = null; // Store bookmark node data for bookmark drag
+  let draggedContainer = null; // Store which container the drag started from
+  let draggedBookmarkParentId = null; // Store parent ID for bookmarks
+  let dropIndicator = null; // Visual drop indicator line
 
   // Get favorites from storage
   function getFavorites() {
@@ -286,14 +287,28 @@ document.addEventListener('DOMContentLoaded', () => {
     isDragging = true;
     draggedElement = element;
     dragStartIndex = Array.from(favoritesContainer.children).indexOf(element);
-    
+    draggedContainer = favoritesContainer;
+    draggedBookmarkNode = null; // This is a MyPicks drag, not a bookmark
+    startDragGeneric(element, event);
+  }
+  
+  function startBookmarkDrag(element, event) {
+    isDragging = true;
+    draggedElement = element;
+    dragStartIndex = -1; // Not used for bookmarks
+    startDragGeneric(element, event);
+  }
+  
+  function startDragGeneric(element, event) {
     const rect = element.getBoundingClientRect();
     dragOffset.x = event.clientX - rect.left;
     dragOffset.y = event.clientY - rect.top;
     
     // Add dragging class
     element.classList.add('dragging');
-    favoritesContainer.classList.add('drag-active');
+    if (draggedContainer) {
+      draggedContainer.classList.add('drag-active');
+    }
     
     // Create ghost element
     const ghost = element.cloneNode(true);
@@ -311,9 +326,55 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add global event listeners
     document.addEventListener('mousemove', handleDragMove);
     document.addEventListener('mouseup', handleDragEnd);
+    document.addEventListener('keydown', handleDragEscape);
     
     // Prevent default drag behavior
     event.preventDefault();
+  }
+
+  function handleDragEscape(event) {
+    if (event.key === 'Escape' && isDragging) {
+      cancelDrag();
+    }
+  }
+
+  function cancelDrag() {
+    isDragging = false;
+    
+    // Remove ghost element
+    const ghost = document.querySelector('.drag-ghost');
+    if (ghost) {
+      ghost.remove();
+    }
+    
+    // Hide drop indicator
+    hideDropIndicator();
+    
+    // Clear all visual effects
+    clearDropGaps();
+    clearAllBookmarkDropGaps();
+    
+    // Restore original element
+    if (draggedElement) {
+      draggedElement.style.opacity = '1';
+      draggedElement.classList.remove('dragging');
+    }
+    
+    if (draggedContainer) {
+      draggedContainer.classList.remove('drag-active');
+    }
+    
+    // Remove global event listeners
+    document.removeEventListener('mousemove', handleDragMove);
+    document.removeEventListener('mouseup', handleDragEnd);
+    document.removeEventListener('keydown', handleDragEscape);
+    
+    // Reset drag state
+    draggedElement = null;
+    dragStartIndex = -1;
+    draggedBookmarkNode = null;
+    draggedContainer = null;
+    draggedBookmarkParentId = null;
   }
 
   function handleDragMove(event) {
@@ -325,18 +386,17 @@ document.addEventListener('DOMContentLoaded', () => {
       ghost.style.top = (event.clientY - dragOffset.y) + 'px';
     }
     
-    // Throttle gap updates to prevent flickering
-    if (dragMoveThrottle) {
-      clearTimeout(dragMoveThrottle);
-    }
-    
-    dragMoveThrottle = setTimeout(() => {
+    if (draggedBookmarkNode) {
+      // Handle bookmark drag
+      const insertionPoint = getBookmarkInsertionPoint(event.clientX, event.clientY);
+      createBookmarkDropGap(insertionPoint);
+    } else {
+      // Handle MyPicks drag
       const insertionPoint = getInsertionPoint(event.clientX, event.clientY);
-      if (insertionPoint && insertionPoint.index !== lastInsertionIndex) {
-        lastInsertionIndex = insertionPoint.index;
+      if (insertionPoint) {
         createDropGap(insertionPoint);
       }
-    }, 16); // ~60fps
+    }
   }
 
   function getInsertionPoint(x, y) {
@@ -406,6 +466,170 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function getBookmarkInsertionPoint(x, y) {
+    // Find the container under the mouse
+    const bookmarksBar = bookmarksBarContainer.getBoundingClientRect();
+    const otherBookmarks = otherBookmarksContainer.getBoundingClientRect();
+    
+    let targetContainer = null;
+    
+    // Check which container the mouse is over
+    if (x >= bookmarksBar.left && x <= bookmarksBar.right && 
+        y >= bookmarksBar.top && y <= bookmarksBar.bottom) {
+      targetContainer = bookmarksBarContainer;
+    } else if (x >= otherBookmarks.left && x <= otherBookmarks.right && 
+               y >= otherBookmarks.top && y <= otherBookmarks.bottom) {
+      targetContainer = otherBookmarksContainer;
+    } else if (draggedContainer) {
+      // If not over any container, use the original container
+      targetContainer = draggedContainer;
+    }
+    
+    if (!targetContainer) return null;
+    
+    // Check if we're inside an expanded folder
+    const allFolders = targetContainer.querySelectorAll('.folder-children[style*="block"]');
+    let actualContainer = targetContainer;
+    let parentId = null;
+    
+    for (const folderChildren of allFolders) {
+      const rect = folderChildren.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        actualContainer = folderChildren;
+        // Get parent folder ID
+        const folderHeader = folderChildren.previousElementSibling;
+        if (folderHeader && folderHeader.dataset.folderId) {
+          parentId = folderHeader.dataset.folderId;
+        }
+      }
+    }
+    
+    const items = Array.from(actualContainer.querySelectorAll(':scope > .bookmark-item-tree, :scope > .bookmark-folder')).filter(child => 
+      child !== draggedElement && child !== dropIndicator
+    );
+    
+    // Find insertion point based on Y position
+    let beforeElement = null;
+    let index = items.length;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const rect = item.getBoundingClientRect();
+      const itemMiddle = rect.top + rect.height / 2;
+      
+      if (y < itemMiddle) {
+        beforeElement = item;
+        index = i;
+        break;
+      }
+    }
+    
+    return {
+      container: actualContainer,
+      beforeElement: beforeElement,
+      index: index,
+      parentId: parentId
+    };
+  }
+  
+  function createBookmarkDropGap(insertionPoint) {
+    if (!insertionPoint) {
+      hideDropIndicator();
+      return;
+    }
+    
+    const { container, beforeElement } = insertionPoint;
+    
+    // Ensure container has position relative for absolute positioning to work
+    if (getComputedStyle(container).position === 'static') {
+      container.style.position = 'relative';
+    }
+    
+    positionDropIndicator(container, beforeElement);
+  }
+  
+  function clearAllBookmarkDropGaps() {
+    const allBookmarkItems = document.querySelectorAll('.bookmark-item-tree, .bookmark-folder');
+    allBookmarkItems.forEach(item => {
+      item.classList.remove('push-down');
+    });
+  }
+  
+  // Create drop indicator line
+  function createDropIndicator() {
+    if (!dropIndicator) {
+      dropIndicator = document.createElement('div');
+      dropIndicator.className = 'drop-indicator';
+      dropIndicator.style.position = 'absolute';
+      dropIndicator.style.height = '2px';
+      dropIndicator.style.backgroundColor = '#007AFF';
+      dropIndicator.style.width = '100%';
+      dropIndicator.style.pointerEvents = 'none';
+      dropIndicator.style.zIndex = '999';
+      dropIndicator.style.display = 'none';
+    }
+    return dropIndicator;
+  }
+  
+  // Position drop indicator between elements
+  function positionDropIndicator(container, beforeElement) {
+    const indicator = createDropIndicator();
+    
+    // Remove indicator from any previous container
+    if (indicator.parentElement && indicator.parentElement !== container) {
+      indicator.parentElement.removeChild(indicator);
+    }
+    
+    if (!container.contains(indicator)) {
+      container.appendChild(indicator);
+    }
+    
+    // Calculate padding/margin of container
+    const containerStyles = getComputedStyle(container);
+    const containerPaddingLeft = parseInt(containerStyles.paddingLeft) || 0;
+    
+    if (beforeElement) {
+      const rect = beforeElement.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      indicator.style.top = (rect.top - containerRect.top - 1) + 'px';
+      indicator.style.left = containerPaddingLeft + 'px';
+      indicator.style.width = `calc(100% - ${containerPaddingLeft * 2}px)`;
+      indicator.style.display = 'block';
+    } else {
+      // Position at the end of container
+      let lastItem = null;
+      for (let child of container.children) {
+        if (child !== indicator && 
+            (child.classList.contains('bookmark-item-tree') || 
+             child.classList.contains('bookmark-folder'))) {
+          lastItem = child;
+        }
+      }
+      
+      if (lastItem) {
+        const rect = lastItem.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        indicator.style.top = (rect.bottom - containerRect.top + 1) + 'px';
+        indicator.style.left = containerPaddingLeft + 'px';
+        indicator.style.width = `calc(100% - ${containerPaddingLeft * 2}px)`;
+        indicator.style.display = 'block';
+      } else {
+        // Empty container
+        indicator.style.top = '0';
+        indicator.style.left = containerPaddingLeft + 'px';
+        indicator.style.width = `calc(100% - ${containerPaddingLeft * 2}px)`;
+        indicator.style.display = 'block';
+      }
+    }
+  }
+  
+  // Hide drop indicator
+  function hideDropIndicator() {
+    if (dropIndicator) {
+      dropIndicator.style.display = 'none';
+    }
+  }
+
   async function handleDragEnd(event) {
     if (!isDragging) return;
     
@@ -417,24 +641,58 @@ document.addEventListener('DOMContentLoaded', () => {
       ghost.remove();
     }
     
-    // Find final insertion point and move element
-    const insertionPoint = getInsertionPoint(event.clientX, event.clientY);
-    if (insertionPoint) {
-      const { index, items } = insertionPoint;
+    // Hide drop indicator
+    hideDropIndicator();
+    
+    if (draggedBookmarkNode) {
+      // Handle bookmark drag end
+      await handleBookmarkDragEnd(event);
+    } else {
+      // Handle MyPicks drag end (existing code)
+      // Find final insertion point and move element
+      const insertionPoint = getInsertionPoint(event.clientX, event.clientY);
+      if (insertionPoint) {
+        const { index, items } = insertionPoint;
+        
+        // Remove dragged element from DOM temporarily
+        draggedElement.remove();
+        
+        // Insert at the correct position
+        if (index >= items.length) {
+          favoritesContainer.appendChild(draggedElement);
+        } else {
+          favoritesContainer.insertBefore(draggedElement, items[index]);
+        }
+      }
       
-      // Remove dragged element from DOM temporarily
-      draggedElement.remove();
+      // Update favorites order based on current DOM order
+      const favorites = await getFavorites();
+      const newOrder = Array.from(favoritesContainer.children)
+        .filter(child => child.classList.contains('favorite-item'))
+        .map(child => {
+          const link = child.querySelector('.favorite-link');
+          if (!link) return null;
+          
+          const url = link.href;
+          if (!url || url === '#') return null;
+          
+          const favorite = favorites.find(fav => fav.url === url);
+          return { 
+            title: favorite ? favorite.title : 'Untitled', 
+            url: url 
+          };
+        })
+        .filter(item => item !== null); // Remove any null entries
       
-      // Insert at the correct position
-      if (index >= items.length) {
-        favoritesContainer.appendChild(draggedElement);
-      } else {
-        favoritesContainer.insertBefore(draggedElement, items[index]);
+      // Only save if we have valid data
+      if (newOrder.length > 0) {
+        saveFavorites(newOrder);
       }
     }
     
     // Clear all visual effects
     clearDropGaps();
+    clearAllBookmarkDropGaps();
     
     // Restore original element
     if (draggedElement) {
@@ -442,46 +700,75 @@ document.addEventListener('DOMContentLoaded', () => {
       draggedElement.classList.remove('dragging');
     }
     
-    favoritesContainer.classList.remove('drag-active');
-    
-    // Update favorites order based on current DOM order
-    const favorites = await getFavorites();
-    const newOrder = Array.from(favoritesContainer.children)
-      .filter(child => child.classList.contains('favorite-item'))
-      .map(child => {
-        const link = child.querySelector('.favorite-link');
-        if (!link) return null;
-        
-        const url = link.href;
-        if (!url || url === '#') return null;
-        
-        const favorite = favorites.find(fav => fav.url === url);
-        return { 
-          title: favorite ? favorite.title : 'Untitled', 
-          url: url 
-        };
-      })
-      .filter(item => item !== null); // Remove any null entries
-    
-    // Only save if we have valid data
-    if (newOrder.length > 0) {
-      saveFavorites(newOrder);
+    if (draggedContainer) {
+      draggedContainer.classList.remove('drag-active');
     }
     
     // Remove global event listeners
     document.removeEventListener('mousemove', handleDragMove);
     document.removeEventListener('mouseup', handleDragEnd);
+    document.removeEventListener('keydown', handleDragEscape);
     
-    // Clear throttle
-    if (dragMoveThrottle) {
-      clearTimeout(dragMoveThrottle);
-      dragMoveThrottle = null;
-    }
+    // Check if this was a bookmark drag before resetting
+    const wasBookmarkDrag = !!draggedBookmarkNode;
     
     // Reset drag state
     draggedElement = null;
     dragStartIndex = -1;
-    lastInsertionIndex = -1;
+    draggedBookmarkNode = null;
+    draggedContainer = null;
+    draggedBookmarkParentId = null;
+    
+    // Allow refresh after a short delay to let Chrome API complete the move
+    if (wasBookmarkDrag) {
+      setTimeout(() => {
+        refreshBookmarks();
+      }, 100);
+    }
+  }
+  
+  async function handleBookmarkDragEnd(event) {
+    const insertionPoint = getBookmarkInsertionPoint(event.clientX, event.clientY);
+    
+    if (insertionPoint && draggedBookmarkNode) {
+      const { index, container, parentId } = insertionPoint;
+      
+      // Determine the new parent ID
+      let newParentId = parentId; // Use folder ID if dropping inside a folder
+      
+      if (!newParentId) {
+        // If not in a folder, determine based on the container
+        if (container === bookmarksBarContainer) {
+          // Find the Bookmarks Bar folder ID
+          const bookmarkTree = await chrome.bookmarks.getTree();
+          const bookmarkBarNode = bookmarkTree[0].children.find(node => 
+            node.id === '1' || node.title.toLowerCase().includes('bookmarks bar')
+          );
+          newParentId = bookmarkBarNode ? bookmarkBarNode.id : '1';
+        } else if (container === otherBookmarksContainer) {
+          // Find the Other Bookmarks folder ID
+          const bookmarkTree = await chrome.bookmarks.getTree();
+          const otherBookmarksNode = bookmarkTree[0].children.find(node => 
+            node.id === '2' || node.title.toLowerCase().includes('other bookmarks')
+          );
+          newParentId = otherBookmarksNode ? otherBookmarksNode.id : '2';
+        }
+      }
+      
+      if (newParentId && (draggedBookmarkNode.parentId !== newParentId || draggedBookmarkNode.index !== index)) {
+        try {
+          // Move the bookmark using Chrome API
+          await chrome.bookmarks.move(draggedBookmarkNode.id, {
+            parentId: newParentId,
+            index: index
+          });
+          
+          // Don't refresh here - it will be handled by the bookmark change listener
+        } catch (error) {
+          console.error('Error moving bookmark:', error);
+        }
+      }
+    }
   }
 
   function getDragAfterElement(container, y) {
@@ -1113,7 +1400,7 @@ document.addEventListener('DOMContentLoaded', () => {
     favoriteItem.className = 'favorite-item';
 
     const link = document.createElement('a');
-    link.href = '#';
+    link.href = bookmark.url;
     link.className = 'favorite-link';
 
     const favicon = document.createElement('img');
@@ -1170,21 +1457,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Handle mouse events for drag & drop
-    favoriteItem.addEventListener('mousedown', (e) => {
+    let favMouseDownData = null;
+    
+    const handleFavMouseDown = (e) => {
       if (e.button === 0) { // Left mouse button
-        longPressTimer = setTimeout(() => {
-          startDrag(favoriteItem, e);
-        }, 200); // 200ms long press
+        favMouseDownData = {
+          startX: e.clientX,
+          startY: e.clientY,
+          bookmark: bookmark,
+          element: favoriteItem
+        };
+        
+        // Add temporary listeners
+        document.addEventListener('mousemove', handleFavMouseMove);
+        document.addEventListener('mouseup', handleFavMouseUp);
+        
+        e.preventDefault(); // Prevent text selection
       }
-    });
-
-    favoriteItem.addEventListener('mouseup', () => {
-      clearTimeout(longPressTimer);
-    });
-
-    favoriteItem.addEventListener('mouseleave', () => {
-      clearTimeout(longPressTimer);
-    });
+    };
+    
+    const handleFavMouseMove = (e) => {
+      if (!favMouseDownData || isDragging) return;
+      
+      // Check if mouse moved enough to start drag (5px threshold)
+      const deltaX = Math.abs(e.clientX - favMouseDownData.startX);
+      const deltaY = Math.abs(e.clientY - favMouseDownData.startY);
+      
+      if (deltaX > 5 || deltaY > 5) {
+        // Start drag
+        startDrag(favMouseDownData.element, e);
+        
+        // Clean up
+        favMouseDownData = null;
+      }
+    };
+    
+    const handleFavMouseUp = (e) => {
+      if (favMouseDownData) {
+        // Clean up - click will be handled by the click event listener
+        favMouseDownData = null;
+      }
+      
+      // Remove temporary listeners
+      document.removeEventListener('mousemove', handleFavMouseMove);
+      document.removeEventListener('mouseup', handleFavMouseUp);
+    };
+    
+    favoriteItem.addEventListener('mousedown', handleFavMouseDown);
 
     // Handle right-click context menu
     favoriteItem.addEventListener('contextmenu', (e) => {
@@ -1273,6 +1592,61 @@ document.addEventListener('DOMContentLoaded', () => {
         createChromeBookmarkContextMenu(bookmark, e.clientX, e.clientY, true);
       });
       
+      // Add drag and drop functionality for folders
+      item.draggable = false; // We'll handle drag manually
+      
+      // Handle mouse events for drag & drop
+      let folderMouseDownData = null;
+      
+      const handleFolderMouseDown = (e) => {
+        if (e.button === 0 && e.target !== expandIcon) { // Left mouse button, not on expand icon
+          folderMouseDownData = {
+            startX: e.clientX,
+            startY: e.clientY,
+            bookmark: bookmark,
+            element: item
+          };
+          
+          // Add temporary listeners
+          document.addEventListener('mousemove', handleFolderMouseMove);
+          document.addEventListener('mouseup', handleFolderMouseUp);
+          
+          e.preventDefault(); // Prevent text selection
+        }
+      };
+      
+      const handleFolderMouseMove = (e) => {
+        if (!folderMouseDownData || isDragging) return;
+        
+        // Check if mouse moved enough to start drag (5px threshold)
+        const deltaX = Math.abs(e.clientX - folderMouseDownData.startX);
+        const deltaY = Math.abs(e.clientY - folderMouseDownData.startY);
+        
+        if (deltaX > 5 || deltaY > 5) {
+          // Start drag
+          draggedBookmarkNode = folderMouseDownData.bookmark;
+          draggedBookmarkParentId = folderMouseDownData.bookmark.parentId;
+          draggedContainer = folderMouseDownData.element.closest('.bookmark-section-content');
+          startBookmarkDrag(folderMouseDownData.element, e);
+          
+          // Clean up
+          folderMouseDownData = null;
+        }
+      };
+      
+      const handleFolderMouseUp = () => {
+        if (folderMouseDownData) {
+          // Click happened (no drag)
+          folderMouseDownData = null;
+        }
+        
+        // Remove temporary listeners
+        document.removeEventListener('mousemove', handleFolderMouseMove);
+        document.removeEventListener('mouseup', handleFolderMouseUp);
+      };
+      
+      folderHeader.addEventListener('mousedown', handleFolderMouseDown);
+      
       item.appendChild(folderHeader);
       item.appendChild(childrenContainer);
       
@@ -1360,6 +1734,61 @@ document.addEventListener('DOMContentLoaded', () => {
         createChromeBookmarkContextMenu(bookmark, e.clientX, e.clientY, false);
       });
       
+      // Add drag and drop functionality for bookmarks
+      item.draggable = false; // We'll handle drag manually
+      
+      // Handle mouse events for drag & drop
+      let mouseDownData = null;
+      
+      const handleMouseDown = (e) => {
+        if (e.button === 0 && !e.target.classList.contains('add-to-favorites-btn')) { // Left mouse button, not on star button
+          mouseDownData = {
+            startX: e.clientX,
+            startY: e.clientY,
+            bookmark: bookmark,
+            element: item
+          };
+          
+          // Add temporary listeners
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+          
+          e.preventDefault(); // Prevent text selection
+        }
+      };
+      
+      const handleMouseMove = (e) => {
+        if (!mouseDownData || isDragging) return;
+        
+        // Check if mouse moved enough to start drag (5px threshold)
+        const deltaX = Math.abs(e.clientX - mouseDownData.startX);
+        const deltaY = Math.abs(e.clientY - mouseDownData.startY);
+        
+        if (deltaX > 5 || deltaY > 5) {
+          // Start drag
+          draggedBookmarkNode = mouseDownData.bookmark;
+          draggedBookmarkParentId = mouseDownData.bookmark.parentId;
+          draggedContainer = mouseDownData.element.closest('.bookmark-section-content');
+          startBookmarkDrag(mouseDownData.element, e);
+          
+          // Clean up
+          mouseDownData = null;
+        }
+      };
+      
+      const handleMouseUp = () => {
+        if (mouseDownData) {
+          // Click happened (no drag)
+          mouseDownData = null;
+        }
+        
+        // Remove temporary listeners
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+      
+      item.addEventListener('mousedown', handleMouseDown);
+      
       item.appendChild(link);
       return { element: item };
     }
@@ -1368,6 +1797,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Render bookmarks tree for specific sections
   async function renderBookmarkTree(nodes, container) {
     container.innerHTML = '';
+    
+    // Remove any drop indicator that might be in this container
+    if (dropIndicator && dropIndicator.parentElement === container) {
+      dropIndicator.remove();
+    }
     
     async function traverse(nodes, parentContainer) {
       for (const node of nodes) {
@@ -1392,6 +1826,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear both containers
     bookmarksBarContainer.innerHTML = '';
     otherBookmarksContainer.innerHTML = '';
+    
+    // Clear any leftover drop indicator
+    hideDropIndicator();
     
     // Find the root bookmark folders
     if (bookmarkTree && bookmarkTree.length > 0 && bookmarkTree[0].children) {
@@ -1682,9 +2119,12 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Error updating favicon:', error);
       }
     } else if (message.type === 'bookmarks_changed') {
-      // Refresh bookmarks when changes are detected
-      console.log('Bookmarks changed, refreshing...');
-      refreshBookmarks();
+      // Don't refresh during drag operation
+      if (!isDragging) {
+        // Refresh bookmarks when changes are detected
+        console.log('Bookmarks changed, refreshing...');
+        refreshBookmarks();
+      }
     }
   });
 
