@@ -138,6 +138,13 @@ body.dark-mode {
   color: white;
 }
 
+#add-btn {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 #bookmarks-bar-section h3, #other-bookmarks-section h3 {
   margin: 0;
   padding: 12px 16px 8px 16px;
@@ -431,9 +438,9 @@ body.dark-mode {
 .dialog-content {
   background: white;
   border-radius: 8px;
-  padding: 20px;
-  min-width: 300px;
-  max-width: 500px;
+  padding: 16px;
+  min-width: 280px;
+  max-width: 320px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   position: relative;
   z-index: 1;
@@ -445,8 +452,8 @@ body.dark-mode {
 }
 
 .dialog-content h3 {
-  margin: 0 0 16px 0;
-  font-size: 18px;
+  margin: 0 0 12px 0;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -482,8 +489,8 @@ body.dark-mode {
 
 .dialog-buttons {
   display: flex;
-  gap: 12px;
-  margin-top: 20px;
+  gap: 8px;
+  margin-top: 16px;
   justify-content: flex-end;
 }
 
@@ -521,6 +528,116 @@ body.dark-mode {
 
 .dark-mode .cancel-btn:hover {
   background: #555;
+}
+
+/* Color picker styles */
+.color-picker-content {
+  min-width: 280px;
+  max-width: 320px;
+}
+
+.color-palette {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+  padding: 12px;
+  background-color: #f8f8f8;
+  border-radius: 8px;
+}
+
+.dark-mode .color-palette {
+  background-color: #1a1a1a;
+}
+
+.color-item {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.color-item:hover {
+  transform: scale(1.1);
+  border-color: #333;
+}
+
+.dark-mode .color-item:hover {
+  border-color: #fff;
+}
+
+.color-item:active {
+  transform: scale(0.95);
+}
+
+.color-item.default-color {
+  border: 2px solid #ddd;
+  background-color: #f5f5f5 !important;
+}
+
+.dark-mode .color-item.default-color {
+  border-color: #555;
+  background-color: #2a2a2a !important;
+}
+
+.dark-mode .color-item.default-color div {
+  border-color: #ccc !important;
+  background-color: #ccc !important;
+}
+
+.color-item.default-color:hover {
+  border-color: #999;
+  background-color: #e8e8e8 !important;
+}
+
+.dark-mode .color-item.default-color:hover {
+  border-color: #777;
+  background-color: #3a3a3a !important;
+}
+
+/* Custom folder colors */
+.folder-header.custom-color {
+  border: 2px solid transparent; /* Color will be set via JavaScript */
+  border-radius: 4px;
+}
+
+.folder-header.custom-color .folder-icon {
+  /* Icon color will be set via JavaScript filter */
+}
+
+.folder-icon.custom-folder-icon {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 14px;
+}
+
+.folder-icon.custom-folder-icon::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 12px;
+  background-color: var(--folder-color, #ffd700);
+  border-radius: 2px 2px 0 0;
+  border: 1px solid var(--folder-color, #ffd700);
+}
+
+.folder-icon.custom-folder-icon::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 0;
+  width: 16px;
+  height: 9px;
+  background-color: var(--folder-color, #ffd700);
+  border-radius: 0 0 2px 2px;
+  border: 1px solid var(--folder-color, #ffd700);
+  border-top: none;
 }
 
 

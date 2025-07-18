@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Storage key for favorites
   const FAVORITES_KEY = 'vertical_bookmarks_favorites';
   const THEME_KEY = 'vertical_bookmarks_theme';
+  const FOLDER_COLORS_KEY = 'vertical_bookmarks_folder_colors';
   
   // Edit mode state
   let isEditMode = false;
@@ -54,6 +55,126 @@ document.addEventListener('DOMContentLoaded', () => {
   function saveTheme(theme) {
     chrome.storage.local.set({ [THEME_KEY]: theme });
   }
+
+  // Get folder colors from storage
+  function getFolderColors() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([FOLDER_COLORS_KEY], (result) => {
+        resolve(result[FOLDER_COLORS_KEY] || {});
+      });
+    });
+  }
+
+  // Save folder colors to storage
+  function saveFolderColors(colors) {
+    chrome.storage.local.set({ [FOLDER_COLORS_KEY]: colors });
+  }
+
+  // Save expanded folder state
+  function saveExpandedFolders() {
+    const expandedFolders = new Set();
+    const expandedElements = document.querySelectorAll('.folder-children[style*="block"]');
+    
+    expandedElements.forEach(element => {
+      const folderHeader = element.previousElementSibling;
+      if (folderHeader) {
+        const titleElement = folderHeader.querySelector('.folder-title');
+        if (titleElement) {
+          // Use folder title as identifier (could be improved with unique IDs)
+          expandedFolders.add(titleElement.textContent);
+        }
+      }
+    });
+    
+    return expandedFolders;
+  }
+
+  // Restore expanded folder state
+  function restoreExpandedFolders(expandedFolders) {
+    if (!expandedFolders || expandedFolders.size === 0) return;
+    
+    setTimeout(() => {
+      const allFolders = document.querySelectorAll('.folder-header');
+      
+      allFolders.forEach(folderHeader => {
+        const titleElement = folderHeader.querySelector('.folder-title');
+        if (titleElement && expandedFolders.has(titleElement.textContent)) {
+          const childrenContainer = folderHeader.nextElementSibling;
+          const expandIcon = folderHeader.querySelector('.expand-icon');
+          
+          if (childrenContainer && expandIcon) {
+            childrenContainer.style.display = 'block';
+            expandIcon.textContent = '▼';
+          }
+        }
+      });
+    }, 100); // Small delay to ensure DOM is updated
+  }
+
+  // Update specific folder color without full refresh
+  async function updateFolderColor(folderId, color) {
+    const colors = await getFolderColors();
+    
+    if (color === null) {
+      // Remove color (reset to default)
+      delete colors[folderId];
+    } else {
+      colors[folderId] = color;
+    }
+    
+    saveFolderColors(colors);
+    
+    // Find and update the specific folder element using data-folder-id
+    const folderHeader = document.querySelector(`[data-folder-id="${folderId}"]`);
+    
+    if (folderHeader) {
+      const folderIcon = folderHeader.querySelector('.folder-icon');
+      
+      if (color) {
+        folderHeader.classList.add('custom-color');
+        folderHeader.style.borderColor = color;
+        
+        if (folderIcon) {
+          folderIcon.classList.add('custom-folder-icon');
+          folderIcon.style.setProperty('--folder-color', color);
+          folderIcon.innerHTML = '';
+        }
+      } else {
+        folderHeader.classList.remove('custom-color');
+        folderHeader.style.borderColor = '';
+        
+        if (folderIcon) {
+          folderIcon.classList.remove('custom-folder-icon');
+          folderIcon.style.removeProperty('--folder-color');
+          folderIcon.textContent = '📁';
+        }
+      }
+    }
+  }
+
+
+
+  // Set color for a specific folder
+  async function setFolderColor(folderId, color) {
+    // Use optimized update instead of full refresh
+    await updateFolderColor(folderId, color);
+  }
+
+  // Get contrast color for text (white or black) based on background color
+  function getContrastColor(hexColor) {
+    // Convert hex to RGB
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Return black for light backgrounds, white for dark backgrounds
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+  }
+
+
 
   // Apply theme
   function applyTheme(theme) {
@@ -401,15 +522,27 @@ document.addEventListener('DOMContentLoaded', () => {
       contextMenu.appendChild(separator1);
     }
 
-    // Edit...
-    const editItem = document.createElement('div');
-    editItem.className = 'context-menu-item';
-    editItem.textContent = 'Edit...';
-    editItem.addEventListener('click', () => {
+    // Rename
+    const renameItem = document.createElement('div');
+    renameItem.className = 'context-menu-item';
+    renameItem.textContent = 'Rename';
+    renameItem.addEventListener('click', () => {
       showEditDialog(bookmark, isFolder);
       contextMenu.remove();
     });
-    contextMenu.appendChild(editItem);
+    contextMenu.appendChild(renameItem);
+
+    if (isFolder) {
+      // Change Color (only for folders)
+      const changeColorItem = document.createElement('div');
+      changeColorItem.className = 'context-menu-item';
+      changeColorItem.textContent = 'Change Color';
+      changeColorItem.addEventListener('click', () => {
+        showColorPicker(bookmark);
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(changeColorItem);
+    }
 
     // Separator
     const separator2 = document.createElement('div');
@@ -488,6 +621,123 @@ document.addEventListener('DOMContentLoaded', () => {
       document.addEventListener('click', closeMenu);
       document.addEventListener('contextmenu', closeMenu);
     }, 10);
+  }
+
+  // Show color picker for folders
+  function showColorPicker(bookmark) {
+    const dialog = document.createElement('div');
+    dialog.className = 'bookmark-dialog';
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    
+    const content = document.createElement('div');
+    content.className = 'dialog-content color-picker-content';
+    
+    const title = document.createElement('h3');
+    title.textContent = 'Choose Folder Color';
+    content.appendChild(title);
+    
+    // Color palette
+    const colorPalette = document.createElement('div');
+    colorPalette.className = 'color-palette';
+    
+    // Color palette matching the screenshot
+    const colors = [
+      { name: 'Default', color: null }, // null means reset to default
+      { name: 'Gray', color: '#9E9E9E' },
+      { name: 'Yellow', color: '#FFD54F' },
+      { name: 'Orange', color: '#FF8A65' },
+      { name: 'Light Green', color: '#81C784' },
+      { name: 'Dark Gray', color: '#546E7A' },
+      { name: 'Orange', color: '#FF9800' },
+      { name: 'Red', color: '#F44336' },
+      { name: 'Lime', color: '#CDDC39' },
+      { name: 'Cyan', color: '#4FC3F7' },
+      { name: 'Beige', color: '#D7CCC8' },
+      { name: 'Pink', color: '#E91E63' },
+      { name: 'Green', color: '#4CAF50' },
+      { name: 'Blue', color: '#2196F3' },
+      { name: 'Brown', color: '#8D6E63' },
+      { name: 'Purple', color: '#9C27B0' },
+      { name: 'Dark Green', color: '#388E3C' },
+      { name: 'Blue', color: '#1976D2' },
+      { name: 'Dark Red', color: '#D32F2F' },
+      { name: 'Dark Pink', color: '#C2185B' },
+      { name: 'Olive', color: '#827717' },
+      { name: 'Brown', color: '#5D4037' },
+      { name: 'Teal', color: '#00695C' },
+      { name: 'Light Pink', color: '#F8BBD9' }
+    ];
+    
+    colors.forEach(colorOption => {
+      const colorItem = document.createElement('div');
+      colorItem.className = 'color-item';
+      colorItem.title = colorOption.name;
+      
+      if (colorOption.color === null) {
+        // Default/reset option with crossed-out circle
+        colorItem.classList.add('default-color');
+        colorItem.innerHTML = '';
+        colorItem.style.backgroundColor = '#f5f5f5';
+        colorItem.style.position = 'relative';
+        
+        // Create the circle with diagonal line
+        const circle = document.createElement('div');
+        circle.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 20px;
+          height: 20px;
+          border: 2px solid #666;
+          border-radius: 50%;
+          background: transparent;
+        `;
+        
+        const line = document.createElement('div');
+        line.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%) rotate(45deg);
+          width: 24px;
+          height: 2px;
+          background: #666;
+        `;
+        
+        colorItem.appendChild(circle);
+        colorItem.appendChild(line);
+      } else {
+        colorItem.style.backgroundColor = colorOption.color;
+      }
+      
+      colorItem.addEventListener('click', () => {
+        setFolderColor(bookmark.id, colorOption.color);
+        document.body.removeChild(dialog);
+      });
+      colorPalette.appendChild(colorItem);
+    });
+    
+    content.appendChild(colorPalette);
+    
+    const buttons = document.createElement('div');
+    buttons.className = 'dialog-buttons';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'dialog-btn cancel-btn';
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+    });
+    
+    buttons.appendChild(cancelBtn);
+    content.appendChild(buttons);
+    
+    dialog.appendChild(overlay);
+    dialog.appendChild(content);
+    document.body.appendChild(dialog);
   }
 
   // Show edit dialog for bookmarks
@@ -736,13 +986,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Create bookmark tree element
-  function createBookmarkTreeElement(bookmark, isFolder = false) {
+  async function createBookmarkTreeElement(bookmark, isFolder = false) {
     const item = document.createElement('div');
     item.className = isFolder ? 'bookmark-folder' : 'bookmark-item-tree';
 
     if (isFolder) {
       const folderHeader = document.createElement('div');
       folderHeader.className = 'folder-header';
+      folderHeader.dataset.folderId = bookmark.id; // Add folder ID for easy identification
+      
+      // Apply custom color if set
+      const folderColors = await getFolderColors();
+      if (folderColors[bookmark.id]) {
+        folderHeader.classList.add('custom-color');
+        folderHeader.style.borderColor = folderColors[bookmark.id];
+        folderHeader.dataset.folderColor = folderColors[bookmark.id];
+      }
       
       const expandIcon = document.createElement('span');
       expandIcon.className = 'expand-icon';
@@ -750,7 +1009,15 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const folderIcon = document.createElement('span');
       folderIcon.className = 'folder-icon';
-      folderIcon.textContent = '📁';
+      
+      // Apply color to folder icon if custom color is set
+      if (folderColors[bookmark.id]) {
+        folderIcon.classList.add('custom-folder-icon');
+        folderIcon.style.setProperty('--folder-color', folderColors[bookmark.id]);
+        folderIcon.innerHTML = ''; // Clear content, will use CSS
+      } else {
+        folderIcon.textContent = '📁';
+      }
       
       const title = document.createElement('span');
       title.className = 'folder-title';
@@ -832,29 +1099,29 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Render bookmarks tree for specific sections
-  function renderBookmarkTree(nodes, container) {
+  async function renderBookmarkTree(nodes, container) {
     container.innerHTML = '';
     
-    function traverse(nodes, parentContainer) {
+    async function traverse(nodes, parentContainer) {
       for (const node of nodes) {
         if (node.children) {
           // It's a folder
-          const { element, childrenContainer } = createBookmarkTreeElement(node, true);
+          const { element, childrenContainer } = await createBookmarkTreeElement(node, true);
           parentContainer.appendChild(element);
-          traverse(node.children, childrenContainer);
+          await traverse(node.children, childrenContainer);
         } else if (node.url) {
           // It's a bookmark
-          const { element } = createBookmarkTreeElement(node, false);
+          const { element } = await createBookmarkTreeElement(node, false);
           parentContainer.appendChild(element);
         }
       }
     }
     
-    traverse(nodes, container);
+    await traverse(nodes, container);
   }
 
   // Render all bookmark sections
-  function renderAllBookmarks(bookmarkTree) {
+  async function renderAllBookmarks(bookmarkTree) {
     // Clear both containers
     bookmarksBarContainer.innerHTML = '';
     otherBookmarksContainer.innerHTML = '';
@@ -896,12 +1163,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Render Bookmarks Bar
       if (bookmarkBarNode && bookmarkBarNode.children) {
-        renderBookmarkTree(bookmarkBarNode.children, bookmarksBarContainer);
+        await renderBookmarkTree(bookmarkBarNode.children, bookmarksBarContainer);
       }
       
       // Render Other Bookmarks  
       if (otherBookmarksNode && otherBookmarksNode.children) {
-        renderBookmarkTree(otherBookmarksNode.children, otherBookmarksContainer);
+        await renderBookmarkTree(otherBookmarksNode.children, otherBookmarksContainer);
       }
     }
   }
@@ -1011,14 +1278,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Function to refresh bookmarks
   function refreshBookmarks() {
-    chrome.bookmarks.getTree((bookmarkTree) => {
-      renderAllBookmarks(bookmarkTree);
+    chrome.bookmarks.getTree(async (bookmarkTree) => {
+      await renderAllBookmarks(bookmarkTree);
     });
   }
 
   // Initialize
-  chrome.bookmarks.getTree((bookmarkTree) => {
-    renderAllBookmarks(bookmarkTree);
+  chrome.bookmarks.getTree(async (bookmarkTree) => {
+    await renderAllBookmarks(bookmarkTree);
   });
 
   renderFavorites();
