@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Drag & Drop - Vertical Bookmarks</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        
+        .test-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 15px 0;
+        }
+        
+        .test-link {
+            display: inline-block;
+            padding: 10px 15px;
+            background-color: #007AFF;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .test-link:hover {
+            background-color: #0056CC;
+        }
+        
+        .test-link:active {
+            background-color: #004499;
+        }
+        
+        .instructions {
+            background-color: #e8f4f8;
+            padding: 15px;
+            border-left: 4px solid #007AFF;
+            margin: 20px 0;
+        }
+        
+        .instructions h3 {
+            margin-top: 0;
+            color: #0056CC;
+        }
+        
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            background-color: #00C851;
+            color: white;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .url-text {
+            background-color: #f0f0f0;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            user-select: all;
+            cursor: pointer;
+        }
+        
+        .url-text:hover {
+            background-color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="status">Extension Active</div>
+    
+    <h1>🐉 Vertical Bookmarks - Drag & Drop Test</h1>
+    
+    <div class="instructions">
+        <h3>Jak testować:</h3>
+        <ol>
+            <li>Otwórz side panel Vertical Bookmarks (kliknij na ikonę rozszerzenia)</li>
+            <li>Przeciągnij dowolny link z tej strony do sekcji "Bookmarks Bar" lub "Other Bookmarks"</li>
+            <li>Powinieneś zobaczyć zieloną linię wskazującą miejsce wstawienia</li>
+            <li>Puść link - bookmark zostanie automatycznie utworzony</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h2>🔗 Linki testowe</h2>
+        <p>Przeciągnij te linki do swojego side panel:</p>
+        
+        <div class="test-links">
+            <a href="https://github.com" class="test-link">GitHub</a>
+            <a href="https://stackoverflow.com" class="test-link">Stack Overflow</a>
+            <a href="https://developer.mozilla.org" class="test-link">MDN Web Docs</a>
+            <a href="https://www.google.com" class="test-link">Google</a>
+            <a href="https://www.youtube.com" class="test-link">YouTube</a>
+            <a href="https://www.wikipedia.org" class="test-link">Wikipedia</a>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>📝 Teksty z URL-ami</h2>
+        <p>Możesz również zaznaczać i przeciągać te URL-e:</p>
+        
+        <div>
+            <p>Zaznacz i przeciągnij: <span class="url-text">https://www.reddit.com</span></p>
+            <p>Lub ten: <span class="url-text">https://news.ycombinator.com</span></p>
+            <p>Albo ten: <span class="url-text">https://www.producthunt.com</span></p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>🎯 Różne typy linków</h2>
+        <p>Testuj różne rodzaje linków:</p>
+        
+        <div class="test-links">
+            <a href="https://www.example.com/very/long/path/to/page" class="test-link">Długa ścieżka</a>
+            <a href="https://subdomain.example.com" class="test-link">Subdomena</a>
+            <a href="https://example.com/search?q=test&category=all" class="test-link">Z parametrami</a>
+            <a href="https://example.com/page#section" class="test-link">Z fragmentem</a>
+        </div>
+    </div>
+    
+    <div class="instructions">
+        <h3>Oczekiwane zachowanie:</h3>
+        <ul>
+            <li>✅ Zielona linia wskazująca miejsce wstawienia podczas przeciągania</li>
+            <li>✅ Zielone podświetlenie kontenera podczas hover</li>
+            <li>✅ Automatyczne utworzenie bookmarku po puszczeniu</li>
+            <li>✅ Inteligentne nazwanie bookmarku na podstawie tytułu/URL</li>
+            <li>✅ Brak konfliktu z istniejącą funkcjonalnością drag & drop</li>
+        </ul>
+    </div>
+    
+    <div class="test-section">
+        <h2>🐛 Debugowanie</h2>
+        <p>Jeśli coś nie działa:</p>
+        <ol>
+            <li>Otwórz Developer Tools (F12)</li>
+            <li>Sprawdź konsolę pod kątem błędów</li>
+            <li>Upewnij się, że rozszerzenie jest aktywne</li>
+            <li>Sprawdź, czy side panel jest otwarty</li>
+        </ol>
+    </div>
+    
+    <script>
+        // Add some visual feedback for testing
+        document.addEventListener('dragstart', function(e) {
+            console.log('Drag started:', e.target);
+            if (e.target.tagName === 'A') {
+                console.log('Link URL:', e.target.href);
+                console.log('Link text:', e.target.textContent);
+            }
+        });
+        
+        document.addEventListener('dragend', function(e) {
+            console.log('Drag ended:', e.target);
+        });
+        
+        // Test URL selection
+        document.querySelectorAll('.url-text').forEach(element => {
+            element.addEventListener('click', function() {
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(this);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            });
+        });
+    </script>
+</body>
+</html> 

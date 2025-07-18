@@ -627,6 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideDropIndicator() {
     if (dropIndicator) {
       dropIndicator.style.display = 'none';
+      dropIndicator.style.backgroundColor = '#007AFF'; // Reset to default blue
     }
   }
 
@@ -693,6 +694,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear all visual effects
     clearDropGaps();
     clearAllBookmarkDropGaps();
+    hideDropIndicator();
+    
+    // Remove external drag visual feedback
+    document.querySelectorAll('.external-drag-over').forEach(el => {
+      el.classList.remove('external-drag-over');
+    });
     
     // Restore original element
     if (draggedElement) {
@@ -757,10 +764,17 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (newParentId && (draggedBookmarkNode.parentId !== newParentId || draggedBookmarkNode.index !== index)) {
         try {
+          // Validate index - get current children count
+          const parentNode = await chrome.bookmarks.getChildren(newParentId);
+          const maxIndex = parentNode.length;
+          
+          // Ensure index is within bounds
+          const validIndex = Math.max(0, Math.min(index, maxIndex));
+          
           // Move the bookmark using Chrome API
           await chrome.bookmarks.move(draggedBookmarkNode.id, {
             parentId: newParentId,
-            index: index
+            index: validIndex
           });
           
           // Don't refresh here - it will be handled by the bookmark change listener
@@ -983,13 +997,19 @@ document.addEventListener('DOMContentLoaded', () => {
     deleteItem.textContent = 'Delete';
     deleteItem.addEventListener('click', () => {
       if (confirm(`Are you sure you want to delete "${bookmark.title}"?`)) {
-        chrome.bookmarks.remove(bookmark.id, () => {
+        const removalCallback = () => {
           if (chrome.runtime.lastError) {
-            console.error('Error deleting bookmark:', chrome.runtime.lastError);
+            console.error('Error deleting bookmark:', chrome.runtime.lastError.message);
           } else {
             // Refresh will happen automatically via bookmark change listener
           }
-        });
+        };
+
+        if (isFolder) {
+          chrome.bookmarks.removeTree(bookmark.id, removalCallback);
+        } else {
+          chrome.bookmarks.remove(bookmark.id, removalCallback);
+        }
       }
       contextMenu.remove();
     });
@@ -2029,11 +2049,20 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(savedTheme);
   }
 
-  // Function to refresh bookmarks
+  // Function to refresh bookmarks with debouncing
+  let refreshTimeout = null;
   function refreshBookmarks() {
-    chrome.bookmarks.getTree(async (bookmarkTree) => {
-      await renderAllBookmarks(bookmarkTree);
-    });
+    // Clear existing timeout to prevent multiple rapid refreshes
+    if (refreshTimeout) {
+      clearTimeout(refreshTimeout);
+    }
+    
+    // Debounce the refresh to prevent rapid multiple calls
+    refreshTimeout = setTimeout(() => {
+      chrome.bookmarks.getTree(async (bookmarkTree) => {
+        await renderAllBookmarks(bookmarkTree);
+      });
+    }, 100);
   }
 
   // Function to refresh all data (My Picks, bookmarks, and favicons)
@@ -2146,30 +2175,232 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('beforeunload', () => {
     chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
   });
-});
 
-// Also notify when the panel is closed if the page is hidden
-window.addEventListener('pagehide', () => {
-  chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
-});
+  // Also notify when the panel is closed if the page is hidden
+  window.addEventListener('pagehide', () => {
+    chrome.runtime.sendMessage({ type: 'sidepanel_closed' });
+  });
 
-// Close any open context menu when the panel loses focus
-window.addEventListener('blur', () => {
-  const existingMenu = document.querySelector('.context-menu');
-  if (existingMenu) {
-    existingMenu.remove();
+  // Close any open context menu when the panel loses focus
+  window.addEventListener('blur', () => {
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+    }
+  });
+
+  // Additional listener for focus out events
+  document.addEventListener('focusout', (e) => {
+    // Check if the new focus target is outside the side panel
+    setTimeout(() => {
+      if (!document.hasFocus()) {
+        const existingMenu = document.querySelector('.context-menu');
+        if (existingMenu) {
+          existingMenu.remove();
+        }
+      }
+    }, 100);
+  });
+
+  // External Drag & Drop functionality
+  // Allow dropping external content (URLs, links, text) into bookmark sections
+  
+  // Add drag and drop event listeners to bookmark containers
+  function initializeExternalDragDrop() {
+    const dropZones = [
+      { container: bookmarksBarContainer, parentId: '1' }, // Bookmarks Bar
+      { container: otherBookmarksContainer, parentId: '2' } // Other Bookmarks
+    ];
+
+    dropZones.forEach(({ container, parentId }) => {
+      if (!container) return;
+
+      // Prevent default drag behaviors
+      container.addEventListener('dragenter', handleExternalDragEnter, false);
+      container.addEventListener('dragover', handleExternalDragOver, false);
+      container.addEventListener('dragleave', handleExternalDragLeave, false);
+      container.addEventListener('drop', (e) => handleExternalDrop(e, parentId), false);
+    });
   }
-});
 
-// Additional listener for focus out events
-document.addEventListener('focusout', (e) => {
-  // Check if the new focus target is outside the side panel
-  setTimeout(() => {
-    if (!document.hasFocus()) {
-      const existingMenu = document.querySelector('.context-menu');
-      if (existingMenu) {
-        existingMenu.remove();
+  function handleExternalDragEnter(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only handle external drags (not internal bookmark drags)
+    if (isDragging || draggedElement || draggedBookmarkNode) return;
+    
+    // Add visual feedback
+    e.currentTarget.classList.add('external-drag-over');
+  }
+
+  function handleExternalDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only handle external drags
+    if (isDragging || draggedElement || draggedBookmarkNode) return;
+    
+    // Allow the drop
+    e.dataTransfer.dropEffect = 'copy';
+    
+    // Show drop indicator
+    const container = e.currentTarget;
+    const insertionPoint = getExternalDropInsertionPoint(container, e.clientY);
+
+    if (insertionPoint) {
+      // Ensure container has position relative for absolute positioning to work
+      if (getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+      }
+      
+      positionDropIndicator(container, insertionPoint.beforeElement);
+      
+    } else {
+      hideDropIndicator();
+    }
+  }
+
+  function handleExternalDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only handle external drags
+    if (isDragging || draggedElement || draggedBookmarkNode) return;
+    
+    // Remove visual feedback if leaving the container
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      e.currentTarget.classList.remove('external-drag-over');
+      hideDropIndicator();
+    }
+  }
+
+  async function handleExternalDrop(e, parentId) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only handle external drags
+    if (isDragging || draggedElement || draggedBookmarkNode) return;
+    
+    // Remove visual feedback
+    e.currentTarget.classList.remove('external-drag-over');
+    hideDropIndicator();
+    
+    // Get dropped data
+    const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+    const title = e.dataTransfer.getData('text/plain');
+    
+    if (!url) return;
+    
+    // Clean up URL (remove extra whitespace, ensure it's a valid URL)
+    const cleanUrl = url.trim().split('\n')[0]; // Take first line if multiple URLs
+    
+    if (!isValidUrl(cleanUrl)) {
+      console.error('Invalid URL dropped:', cleanUrl);
+      return;
+    }
+    
+    // Determine insertion point
+    const container = e.currentTarget;
+    const insertionPoint = getExternalDropInsertionPoint(container, e.clientY);
+    
+    try {
+      // Validate insertion point
+      if (!insertionPoint || insertionPoint.index < 0) {
+        console.error('Invalid insertion point for external drop');
+        return;
+      }
+      
+      // Get current children count to validate index
+      const parentChildren = await chrome.bookmarks.getChildren(parentId);
+      const maxIndex = parentChildren.length;
+      const validIndex = Math.max(0, Math.min(insertionPoint.index, maxIndex));
+      
+      // Create bookmark
+      const bookmarkData = {
+        parentId: parentId,
+        title: title && title !== cleanUrl ? title : extractTitleFromUrl(cleanUrl),
+        url: cleanUrl,
+        index: validIndex
+      };
+      
+      const newBookmark = await chrome.bookmarks.create(bookmarkData);
+      console.log('Created bookmark from external drop:', newBookmark);
+      
+      // Refresh the bookmarks display
+      refreshBookmarks();
+      
+    } catch (error) {
+      console.error('Error creating bookmark from external drop:', error);
+    }
+  }
+
+  function getExternalDropInsertionPoint(container, clientY) {
+    if (!container) {
+      return { index: 0, beforeElement: null };
+    }
+    
+    const children = Array.from(container.children).filter(child => 
+      child.classList.contains('bookmark-item') || 
+      child.classList.contains('folder-item') ||
+      child.classList.contains('bookmark-item-tree') ||
+      child.classList.contains('bookmark-folder')
+    );
+    
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (!child) continue;
+      
+      const rect = child.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      
+      if (clientY < midY) {
+        return { index: i, beforeElement: child };
       }
     }
-  }, 100);
+    
+    // Drop at the end
+    return { index: children.length, beforeElement: null };
+  }
+
+  function isValidUrl(string) {
+    try {
+      const url = new URL(string);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function extractTitleFromUrl(url) {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.replace('www.', '');
+      const path = urlObj.pathname;
+      
+      // Try to extract meaningful title from URL
+      if (path && path !== '/') {
+        const pathParts = path.split('/').filter(part => part.length > 0);
+        if (pathParts.length > 0) {
+          const lastPart = pathParts[pathParts.length - 1];
+          // Remove file extensions and make it more readable
+          const cleanPart = lastPart.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+          if (cleanPart.length > 2) {
+            return cleanPart.charAt(0).toUpperCase() + cleanPart.slice(1);
+          }
+        }
+      }
+      
+      return hostname;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  // Initialize external drag & drop when DOM is ready
+  initializeExternalDragDrop();
 });
