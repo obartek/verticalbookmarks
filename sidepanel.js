@@ -592,20 +592,20 @@ document.addEventListener('DOMContentLoaded', () => {
     contextMenu.appendChild(renameItem);
 
     if (isFolder) {
-      // This folder color
+      // Color Folder…
       const changeColorItem = document.createElement('div');
       changeColorItem.className = 'context-menu-item';
-      changeColorItem.textContent = 'This folder color';
+      changeColorItem.textContent = 'Color Folder…';
       changeColorItem.addEventListener('click', () => {
         showColorPicker(bookmark, false); // false = single folder
         contextMenu.remove();
       });
       contextMenu.appendChild(changeColorItem);
 
-      // All folders color
+      // Color All Folders…
       const changeAllColorsItem = document.createElement('div');
       changeAllColorsItem.className = 'context-menu-item';
-      changeAllColorsItem.textContent = 'All folders color';
+      changeAllColorsItem.textContent = 'Color All Folders…';
       changeAllColorsItem.addEventListener('click', () => {
         showColorPicker(bookmark, true); // true = all subfolders
         contextMenu.remove();
@@ -837,10 +837,11 @@ document.addEventListener('DOMContentLoaded', () => {
     content.appendChild(nameLabel);
     content.appendChild(nameInput);
     
+    let urlInput = null;
     if (!isFolder) {
       const urlLabel = document.createElement('label');
       urlLabel.textContent = 'URL:';
-      const urlInput = document.createElement('input');
+      urlInput = document.createElement('input');
       urlInput.type = 'text';
       urlInput.value = bookmark.url;
       urlInput.className = 'dialog-input';
@@ -888,6 +889,33 @@ document.addEventListener('DOMContentLoaded', () => {
     
     nameInput.focus();
     nameInput.select();
+    
+    // Add Enter key support
+    const handleEnterKey = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // Execute save action directly
+        const updates = { title: nameInput.value };
+        if (!isFolder && urlInput) {
+          updates.url = urlInput.value;
+        }
+        
+        chrome.bookmarks.update(bookmark.id, updates, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Error updating bookmark:', chrome.runtime.lastError);
+          } else {
+            // Refresh will happen automatically via bookmark change listener
+          }
+        });
+        
+        document.body.removeChild(dialog);
+      }
+    };
+    
+    nameInput.addEventListener('keydown', handleEnterKey);
+    if (!isFolder && urlInput) {
+      urlInput.addEventListener('keydown', handleEnterKey);
+    }
   }
 
 
@@ -953,6 +981,26 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(dialog);
     
     nameInput.focus();
+    
+    // Add Enter key support
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // Execute create action directly
+        if (nameInput.value.trim()) {
+          chrome.bookmarks.create({
+            parentId: parentId,
+            title: nameInput.value.trim()
+          }, () => {
+            if (chrome.runtime.lastError) {
+              console.error('Error creating folder:', chrome.runtime.lastError);
+            }
+          });
+        }
+        
+        document.body.removeChild(dialog);
+      }
+    });
   }
 
   // Create favorite bookmark element
