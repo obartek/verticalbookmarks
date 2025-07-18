@@ -1475,9 +1475,16 @@ document.addEventListener('DOMContentLoaded', () => {
     link.href = bookmark.url;
     link.className = 'favorite-link';
 
-    const favicon = document.createElement('img');
-    favicon.src = 'icons/logo/logo-16-inactive.png';
-    favicon.dataset.url = bookmark.url;
+    const faviconContainer = document.createElement('span');
+    faviconContainer.className = 'favicon-container';
+    const defaultFavicon = document.createElement('span');
+    defaultFavicon.className = 'default-favicon';
+    defaultFavicon.textContent = '🌐';
+    faviconContainer.appendChild(defaultFavicon);
+    const faviconImg = document.createElement('img');
+    faviconImg.style.display = 'none';
+    faviconImg.dataset.url = bookmark.url;
+    faviconContainer.appendChild(faviconImg);
 
     // Request favicon from background script
     chrome.runtime.sendMessage({ type: 'get_favicon', url: bookmark.url });
@@ -1513,7 +1520,7 @@ document.addEventListener('DOMContentLoaded', () => {
       moveBookmarkPosition(bookmark, 1);
     });
 
-    link.appendChild(favicon);
+    link.appendChild(faviconContainer);
     
     favoriteItem.appendChild(link);
     favoriteItem.appendChild(menuBtn);
@@ -1717,10 +1724,17 @@ document.addEventListener('DOMContentLoaded', () => {
       link.href = '#';
       link.className = 'bookmark-link';
       
-      const favicon = document.createElement('img');
-      favicon.src = 'icons/logo/logo-16-inactive.png';
-      favicon.dataset.url = bookmark.url;
-      favicon.className = 'bookmark-favicon';
+      const faviconContainer = document.createElement('span');
+      faviconContainer.className = 'favicon-container';
+      const defaultFavicon = document.createElement('span');
+      defaultFavicon.className = 'default-favicon';
+      defaultFavicon.textContent = '🌐';
+      faviconContainer.appendChild(defaultFavicon);
+      const faviconImg = document.createElement('img');
+      faviconImg.className = 'bookmark-favicon';
+      faviconImg.style.display = 'none';
+      faviconImg.dataset.url = bookmark.url;
+      faviconContainer.appendChild(faviconImg);
       
       chrome.runtime.sendMessage({ type: 'get_favicon', url: bookmark.url });
   
@@ -1773,7 +1787,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
       
-      link.appendChild(favicon);
+      link.appendChild(faviconContainer);
       link.appendChild(title);
       link.appendChild(addToFavoritesBtn);
   
@@ -1939,7 +1953,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentFavicons = new Map();
       const existingFavicons = favoritesContainer.querySelectorAll('img[data-url]');
       existingFavicons.forEach(img => {
-        if (img.src && !img.src.includes('logo-16-inactive.png')) {
+        if (img.style.display !== 'none' && img.src) {
           currentFavicons.set(img.dataset.url, img.src);
         }
       });
@@ -1952,9 +1966,14 @@ document.addEventListener('DOMContentLoaded', () => {
           favoritesContainer.appendChild(favoriteElement);
           
           // Restore favicon if we had it cached
-          const faviconImg = favoriteElement.querySelector('img[data-url]');
-          if (faviconImg && currentFavicons.has(bookmark.url)) {
-            faviconImg.src = currentFavicons.get(bookmark.url);
+          if (currentFavicons.has(bookmark.url)) {
+            const faviconImg = favoriteElement.querySelector('img[data-url]');
+            const defaultFavicon = favoriteElement.querySelector('.default-favicon');
+            if (faviconImg && defaultFavicon) {
+              faviconImg.src = currentFavicons.get(bookmark.url);
+              faviconImg.style.display = '';
+              defaultFavicon.style.display = 'none';
+            }
           }
         }
       });
@@ -2110,7 +2129,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // First, reset all favicon to default icons
       const allFaviconImages = document.querySelectorAll('img[data-url]');
       allFaviconImages.forEach(img => {
-        img.src = 'icons/logo/logo-16-inactive.png';
+        img.src = '';
+        img.style.display = 'none';
+        const container = img.parentElement;
+        const defaultFavicon = container.querySelector('.default-favicon');
+        if (defaultFavicon) {
+            defaultFavicon.style.display = '';
+        }
       });
       
       // Clear favicon cache by re-requesting all favicons
@@ -2182,6 +2207,12 @@ document.addEventListener('DOMContentLoaded', () => {
           // Verify the image element still exists and has the right URL
           if (img && img.dataset.url === message.url) {
             img.src = message.dataUrl;
+            img.style.display = '';
+            const container = img.parentElement;
+            const defaultFavicon = container.querySelector('.default-favicon');
+            if (defaultFavicon) {
+              defaultFavicon.style.display = 'none';
+            }
           }
         });
       } catch (error) {

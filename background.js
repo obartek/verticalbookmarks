@@ -13,29 +13,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   // Toggle the state
   const newState = !isPanelOpen;
   await chrome.storage.session.set({ [storageKey]: newState });
-  updateIcon(windowId);
 });
-
-// Function to update the icon based on the panel's state
-const updateIcon = async (windowId) => {
-  const storageKey = `window_${windowId}_panel_state`;
-  const result = await chrome.storage.session.get(storageKey);
-  const isPanelOpen = result[storageKey] || false;
-  
-  const iconPath = isPanelOpen ? {
-    "16": "icons/logo/logo-16.png",
-    "32": "icons/logo/logo-32.png",
-    "48": "icons/logo/logo-48.png",
-    "128": "icons/logo/logo-128.png"
-  } : {
-    "16": "icons/logo/logo-16-inactive.png",
-    "32": "icons/logo/logo-32-inactive.png",
-    "48": "icons/logo/logo-48-inactive.png",
-    "128": "icons/logo/logo-128-inactive.png"
-  };
-  
-  chrome.action.setIcon({ path: iconPath });
-};
 
 // Function to notify side panel about bookmark changes
 const notifyBookmarkChange = () => {
@@ -75,14 +53,14 @@ chrome.bookmarks.onChildrenReordered.addListener((id, reorderInfo) => {
 // Update icon when a new window is focused
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId !== chrome.windows.WINDOW_ID_NONE) {
-    updateIcon(windowId);
+    // The updateIcon function has been removed to prevent errors.
   }
 });
 
 // Update icon when a tab is updated
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
-    updateIcon(tab.windowId);
+    // The updateIcon function has been removed to prevent errors.
   }
 });
 
@@ -112,7 +90,6 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
 
     if (isPanelOpen !== undefined) {
       await chrome.storage.session.set({ [storageKey]: isPanelOpen });
-      updateIcon(windowId);
     }
   }
 
