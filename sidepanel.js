@@ -160,6 +160,65 @@ document.addEventListener('DOMContentLoaded', () => {
     await updateFolderColor(folderId, color);
   }
 
+  // Set color for a folder and all its subfolders recursively
+  async function setFolderColorRecursive(folderId, color) {
+    // Get all bookmark folders to find subfolders
+    chrome.bookmarks.getTree(async (bookmarkTree) => {
+      const folderIds = await getAllSubfolderIds(bookmarkTree, folderId);
+      
+      // Apply color to all found folders
+      for (const id of folderIds) {
+        await updateFolderColor(id, color);
+      }
+    });
+  }
+
+  // Helper function to get all subfolder IDs recursively
+  async function getAllSubfolderIds(bookmarkTree, rootFolderId) {
+    const folderIds = [rootFolderId]; // Include the root folder itself
+    
+    // Find the root folder in the tree
+    const rootFolder = findFolderInTree(bookmarkTree, rootFolderId);
+    if (rootFolder && rootFolder.children) {
+      collectSubfolderIds(rootFolder.children, folderIds);
+    }
+    
+    return folderIds;
+  }
+
+  // Helper function to find a folder by ID in the bookmark tree
+  function findFolderInTree(bookmarkTree, targetId) {
+    for (const root of bookmarkTree) {
+      const result = searchFolderInNode(root, targetId);
+      if (result) return result;
+    }
+    return null;
+  }
+
+  // Helper function to search for a folder in a node
+  function searchFolderInNode(node, targetId) {
+    if (node.id === targetId) return node;
+    
+    if (node.children) {
+      for (const child of node.children) {
+        const result = searchFolderInNode(child, targetId);
+        if (result) return result;
+      }
+    }
+    
+    return null;
+  }
+
+  // Helper function to collect all subfolder IDs recursively
+  function collectSubfolderIds(children, folderIds) {
+    for (const child of children) {
+      if (child.children) { // It's a folder
+        folderIds.push(child.id);
+        collectSubfolderIds(child.children, folderIds);
+      }
+    }
+  }
+
   // Get contrast color for text (white or black) based on background color
   function getContrastColor(hexColor) {
     // Convert hex to RGB
@@ -533,15 +592,25 @@ document.addEventListener('DOMContentLoaded', () => {
     contextMenu.appendChild(renameItem);
 
     if (isFolder) {
-      // Change Color (only for folders)
+      // This folder color
       const changeColorItem = document.createElement('div');
       changeColorItem.className = 'context-menu-item';
-      changeColorItem.textContent = 'Change Color';
+      changeColorItem.textContent = 'This folder color';
       changeColorItem.addEventListener('click', () => {
-        showColorPicker(bookmark);
+        showColorPicker(bookmark, false); // false = single folder
         contextMenu.remove();
       });
       contextMenu.appendChild(changeColorItem);
+
+      // All folders color
+      const changeAllColorsItem = document.createElement('div');
+      changeAllColorsItem.className = 'context-menu-item';
+      changeAllColorsItem.textContent = 'All folders color';
+      changeAllColorsItem.addEventListener('click', () => {
+        showColorPicker(bookmark, true); // true = all subfolders
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(changeAllColorsItem);
     }
 
     // Separator
@@ -624,7 +693,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Show color picker for folders
-  function showColorPicker(bookmark) {
+  function showColorPicker(bookmark, applyToAll = false) {
     const dialog = document.createElement('div');
     dialog.className = 'bookmark-dialog';
     
@@ -635,7 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
     content.className = 'dialog-content color-picker-content';
     
     const title = document.createElement('h3');
-    title.textContent = 'Choose Folder Color';
+    title.textContent = applyToAll ? 'Choose Color for All Folders' : 'Choose Folder Color';
     content.appendChild(title);
     
     // Color palette
@@ -714,7 +783,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       
       colorItem.addEventListener('click', () => {
-        setFolderColor(bookmark.id, colorOption.color);
+        if (applyToAll) {
+          setFolderColorRecursive(bookmark.id, colorOption.color);
+        } else {
+          setFolderColor(bookmark.id, colorOption.color);
+        }
         document.body.removeChild(dialog);
       });
       colorPalette.appendChild(colorItem);

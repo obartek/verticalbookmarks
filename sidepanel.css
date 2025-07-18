@@ -680,6 +680,10 @@ body.dark-mode {
   transition: transform 0.2s ease;
 }
 
+.dark-mode .expand-icon {
+  color: #e5e5e5;
+}
+
 .folder-icon {
   margin-right: 8px;
   font-size: 16px;
@@ -689,6 +693,10 @@ body.dark-mode {
   font-size: 14px;
   font-weight: 500;
   color: #333;
+}
+
+.dark-mode .folder-title {
+  color: #e5e5e5;
 }
 
 .folder-children {
