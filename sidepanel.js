@@ -3,10 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.runtime.sendMessage({ type: 'sidepanel_opened' });
   
   const favoritesContainer = document.getElementById('favorites-container');
-  const bookmarksContainer = document.getElementById('bookmarks-container');
+  const bookmarksBarContainer = document.getElementById('bookmarks-bar-container');
+  const otherBookmarksContainer = document.getElementById('other-bookmarks-container');
   const editToggleBtn = document.getElementById('edit-toggle-btn');
   const addBtn = document.getElementById('add-btn');
-  const floatingAddBtn = document.getElementById('floating-add-btn');
+
   const themeToggle = document.getElementById('theme-toggle');
 
   // Storage key for favorites
@@ -278,8 +279,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const contextMenu = document.createElement('div');
     contextMenu.className = 'context-menu';
+    
+    // Temporarily position menu to calculate its size
     contextMenu.style.left = x + 'px';
     contextMenu.style.top = y + 'px';
+    contextMenu.style.visibility = 'hidden';
+    document.body.appendChild(contextMenu);
 
     const openItem = document.createElement('div');
     openItem.className = 'context-menu-item';
@@ -302,7 +307,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     contextMenu.appendChild(openItem);
     contextMenu.appendChild(removeItem);
-    document.body.appendChild(contextMenu);
+    
+    // Calculate menu dimensions and adjust position if needed
+    const menuRect = contextMenu.getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    
+    let finalX = x;
+    let finalY = y;
+    
+    // Check if menu goes beyond right edge of screen
+    if (x + menuRect.width > windowWidth) {
+      finalX = windowWidth - menuRect.width - 10; // 10px margin from edge
+    }
+    
+    // Check if menu goes beyond bottom edge of screen
+    if (y + menuRect.height > windowHeight) {
+      finalY = windowHeight - menuRect.height - 10; // 10px margin from edge
+    }
+    
+    // Apply final position and make visible
+    contextMenu.style.left = finalX + 'px';
+    contextMenu.style.top = finalY + 'px';
+    contextMenu.style.visibility = 'visible';
 
     // Close menu when clicking outside
     const closeMenu = (e) => {
@@ -501,8 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Render bookmarks tree
-  function renderBookmarkTree(bookmarkTree, container) {
+  // Render bookmarks tree for specific sections
+  function renderBookmarkTree(nodes, container) {
     container.innerHTML = '';
     
     function traverse(nodes, parentContainer) {
@@ -520,7 +547,60 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     
-    traverse(bookmarkTree, container);
+    traverse(nodes, container);
+  }
+
+  // Render all bookmark sections
+  function renderAllBookmarks(bookmarkTree) {
+    // Clear both containers
+    bookmarksBarContainer.innerHTML = '';
+    otherBookmarksContainer.innerHTML = '';
+    
+    // Find the root bookmark folders
+    if (bookmarkTree && bookmarkTree.length > 0 && bookmarkTree[0].children) {
+      // Common folder names in different languages
+      const bookmarkBarNames = [
+        'Bookmarks bar', 'Bookmarks Bar', 'Pasek zakładek', 
+        'Barre de favoris', 'Lesezeichenleiste', 'Barra de marcadores',
+        'Barra dei segnalibri', 'ブックマークバー', '书签栏'
+      ];
+      
+      const otherBookmarksNames = [
+        'Other bookmarks', 'Other Bookmarks', 'Inne zakładki',
+        'Autres favoris', 'Weitere Lesezeichen', 'Otros marcadores',
+        'Altri segnalibri', 'その他のブックマーク', '其他书签'
+      ];
+      
+      // Find bookmark folders by matching names
+      const bookmarkBarNode = bookmarkTree[0].children.find(node => 
+        bookmarkBarNames.some(name => 
+          node.title.toLowerCase().includes(name.toLowerCase()) || 
+          name.toLowerCase().includes(node.title.toLowerCase())
+        ) || node.id === '1' // Fallback to ID for Bookmarks Bar
+      );
+      
+      const otherBookmarksNode = bookmarkTree[0].children.find(node => 
+        otherBookmarksNames.some(name => 
+          node.title.toLowerCase().includes(name.toLowerCase()) || 
+          name.toLowerCase().includes(node.title.toLowerCase())
+        ) || node.id === '2' // Fallback to ID for Other Bookmarks
+      );
+      
+      // Debug: log found folders
+      console.log('Available bookmark folders:', bookmarkTree[0].children.map(node => ({ id: node.id, title: node.title })));
+      console.log('Found Bookmarks Bar:', bookmarkBarNode ? bookmarkBarNode.title : 'Not found');
+      console.log('Found Other Bookmarks:', otherBookmarksNode ? otherBookmarksNode.title : 'Not found');
+      
+      // Render Bookmarks Bar
+      if (bookmarkBarNode && bookmarkBarNode.children) {
+        renderBookmarkTree(bookmarkBarNode.children, bookmarksBarContainer);
+      }
+      
+      // Render Other Bookmarks  
+      if (otherBookmarksNode && otherBookmarksNode.children) {
+        renderBookmarkTree(otherBookmarksNode.children, otherBookmarksContainer);
+      }
+    }
   }
 
   // Render favorites
@@ -611,8 +691,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Add button in header
   addBtn.addEventListener('click', addCurrentPageToFavorites);
 
-  // Floating add button
-  floatingAddBtn.addEventListener('click', addCurrentPageToFavorites);
+
 
   // Theme toggle
   themeToggle.addEventListener('click', () => {
@@ -629,7 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize
   chrome.bookmarks.getTree((bookmarkTree) => {
-    renderBookmarkTree(bookmarkTree, bookmarksContainer);
+    renderAllBookmarks(bookmarkTree);
   });
 
   renderFavorites();
