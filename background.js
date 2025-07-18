@@ -82,25 +82,76 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
   }
 
   if (message.type === 'get_favicon') {
-    const domain = new URL(message.url).hostname;
-    const faviconUrl = `https://www.google.com/s2/favicons?sz=32&domain=${domain}`;
+    const tryGetFavicon = async (url) => {
+      const domain = new URL(url).hostname;
+      
+      // First try to get favicon from tab if it's the current tab
+      try {
+        const tabs = await chrome.tabs.query({ url: url });
+        if (tabs.length > 0 && tabs[0].favIconUrl && tabs[0].favIconUrl !== '') {
+          const response = await fetch(tabs[0].favIconUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            if (blob.size > 0 && blob.type.startsWith('image/')) {
+              return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+              });
+            }
+          }
+        }
+      } catch (error) {
+        // Continue to manual favicon detection
+      }
+      
+      // List of potential favicon URLs to try in order
+      const faviconUrls = [
+        `${new URL(url).origin}/favicon.ico`,
+        `${new URL(url).origin}/favicon.png`,
+        `${new URL(url).origin}/apple-touch-icon.png`,
+        `https://www.google.com/s2/favicons?sz=32&domain=${domain}`,
+        `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(url)}`
+      ];
+      
+      for (const faviconUrl of faviconUrls) {
+        try {
+          const response = await fetch(faviconUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            
+            // Check if it's a valid image (not a 404 page or empty response)
+            if (blob.size > 0 && blob.type.startsWith('image/')) {
+              return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+              });
+            }
+          }
+        } catch (error) {
+          // Continue to next URL
+          continue;
+        }
+      }
+      
+      return null;
+    };
     
-    fetch(faviconUrl)
-      .then(response => response.blob())
-      .then(blob => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
+    tryGetFavicon(message.url)
+      .then(dataUrl => {
+        if (dataUrl) {
           chrome.runtime.sendMessage({
             type: 'favicon_response',
             url: message.url,
-            dataUrl: reader.result
+            dataUrl: dataUrl
           });
-        };
-        reader.readAsDataURL(blob);
+        }
       })
       .catch(() => {
         // Ignore errors, default icon will be used
       });
+    
     return true; // Indicates that the response is sent asynchronously
   }
 });

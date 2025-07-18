@@ -3,7 +3,7 @@
   "name": "Vertical Bookmarks",
   "version": "1.0",
   "description": "A simple vertical bookmarks extension.",
-  "permissions": ["sidePanel", "bookmarks", "storage", "activeTab"],
+  "permissions": ["sidePanel", "bookmarks", "storage", "activeTab", "tabs"],
   "host_permissions": [
     "<all_urls>"
   ],
