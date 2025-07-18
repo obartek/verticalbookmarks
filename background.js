@@ -34,7 +34,7 @@ const updateIcon = async (windowId) => {
     "128": "icons/logo/logo-128-inactive.png"
   };
   
-  chrome.action.setIcon({ path: iconPath, windowId: windowId });
+  chrome.action.setIcon({ path: iconPath });
 };
 
 // Function to notify side panel about bookmark changes

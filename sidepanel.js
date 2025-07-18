@@ -32,14 +32,52 @@ document.addEventListener('DOMContentLoaded', () => {
   function getFavorites() {
     return new Promise((resolve) => {
       chrome.storage.local.get([FAVORITES_KEY], (result) => {
-        resolve(result[FAVORITES_KEY] || []);
+        const favorites = result[FAVORITES_KEY] || [];
+        // Validate that we got an array
+        if (Array.isArray(favorites)) {
+          resolve(favorites);
+        } else {
+          console.error('Invalid favorites data in storage, resetting to empty array');
+          resolve([]);
+        }
       });
     });
   }
 
   // Save favorites to storage
   function saveFavorites(favorites) {
-    chrome.storage.local.set({ [FAVORITES_KEY]: favorites });
+    // Validate input before saving
+    if (!Array.isArray(favorites)) {
+      console.error('Error: Attempted to save invalid favorites data');
+      return;
+    }
+    
+    // Filter out any invalid entries and ensure valid titles
+    const validFavorites = favorites.filter(fav => 
+      fav && typeof fav === 'object' && fav.url
+    ).map(fav => {
+      let title = fav.title && fav.title.trim() 
+        ? fav.title.trim() 
+        : 'Untitled';
+      
+      // If title is empty, try to use hostname as fallback
+      if (!fav.title || !fav.title.trim()) {
+        try {
+          if (fav.url) {
+            title = new URL(fav.url).hostname;
+          }
+        } catch (e) {
+          title = 'Untitled';
+        }
+      }
+      
+      return {
+        title: title,
+        url: fav.url
+      };
+    });
+    
+    chrome.storage.local.set({ [FAVORITES_KEY]: validFavorites });
   }
 
   // Get theme from storage
@@ -411,12 +449,23 @@ document.addEventListener('DOMContentLoaded', () => {
       .filter(child => child.classList.contains('favorite-item'))
       .map(child => {
         const link = child.querySelector('.favorite-link');
+        if (!link) return null;
+        
         const url = link.href;
+        if (!url || url === '#') return null;
+        
         const favorite = favorites.find(fav => fav.url === url);
-        return { title: favorite ? favorite.title : 'Untitled', url };
-      });
+        return { 
+          title: favorite ? favorite.title : 'Untitled', 
+          url: url 
+        };
+      })
+      .filter(item => item !== null); // Remove any null entries
     
-    saveFavorites(newOrder);
+    // Only save if we have valid data
+    if (newOrder.length > 0) {
+      saveFavorites(newOrder);
+    }
     
     // Remove global event listeners
     document.removeEventListener('mousemove', handleDragMove);
@@ -470,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     openItem.className = 'context-menu-item';
     openItem.textContent = 'Open';
     openItem.addEventListener('click', () => {
-      window.open(bookmark.url, '_blank');
+      chrome.tabs.create({ url: bookmark.url, index: 999999 });
       contextMenu.remove();
     });
 
@@ -478,10 +527,20 @@ document.addEventListener('DOMContentLoaded', () => {
     removeItem.className = 'context-menu-item';
     removeItem.textContent = 'Delete';
     removeItem.addEventListener('click', async () => {
-      const favorites = await getFavorites();
-      const updatedFavorites = favorites.filter(fav => fav.url !== bookmark.url);
-      saveFavorites(updatedFavorites);
-      renderFavorites();
+      try {
+        const favorites = await getFavorites();
+        const updatedFavorites = favorites.filter(fav => fav.url !== bookmark.url);
+        
+        // Validate that we actually have favorites and the filter worked
+        if (Array.isArray(favorites) && favorites.length > 0) {
+          saveFavorites(updatedFavorites);
+          renderFavorites();
+        } else {
+          console.error('Error: No favorites found or invalid favorites data');
+        }
+      } catch (error) {
+        console.error('Error removing favorite:', error);
+      }
       contextMenu.remove();
     });
 
@@ -550,7 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
       openNewTabItem.className = 'context-menu-item';
       openNewTabItem.textContent = 'Open in New Tab';
       openNewTabItem.addEventListener('click', () => {
-        chrome.tabs.create({ url: bookmark.url });
+        chrome.tabs.create({ url: bookmark.url, index: 999999 });
         contextMenu.remove();
       });
       contextMenu.appendChild(openNewTabItem);
@@ -611,6 +670,18 @@ document.addEventListener('DOMContentLoaded', () => {
         contextMenu.remove();
       });
       contextMenu.appendChild(changeAllColorsItem);
+
+      // Remove All Colors…
+      const removeAllColorsItem = document.createElement('div');
+      removeAllColorsItem.className = 'context-menu-item';
+      removeAllColorsItem.textContent = 'Remove All Colors…';
+      removeAllColorsItem.addEventListener('click', () => {
+        if (confirm('Are you sure you want to remove colors from this folder and all its subfolders?')) {
+          setFolderColorRecursive(bookmark.id, null); // null = remove color
+        }
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(removeAllColorsItem);
     }
 
     // Separator
@@ -815,6 +886,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show edit dialog for bookmarks
   function showEditDialog(bookmark, isFolder = false) {
+    // Validate bookmark parameter
+    if (!bookmark || (!bookmark.title && !bookmark.url)) {
+      console.error('Invalid bookmark passed to showEditDialog');
+      return;
+    }
+    
     const dialog = document.createElement('div');
     dialog.className = 'bookmark-dialog';
     
@@ -832,18 +909,18 @@ document.addEventListener('DOMContentLoaded', () => {
     nameLabel.textContent = 'Name:';
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
-    nameInput.value = bookmark.title;
+    nameInput.value = bookmark.title || '';
     nameInput.className = 'dialog-input';
     content.appendChild(nameLabel);
     content.appendChild(nameInput);
     
     let urlInput = null;
-    if (!isFolder) {
+    if (!isFolder && bookmark.url) {
       const urlLabel = document.createElement('label');
       urlLabel.textContent = 'URL:';
       urlInput = document.createElement('input');
       urlInput.type = 'text';
-      urlInput.value = bookmark.url;
+      urlInput.value = bookmark.url || '';
       urlInput.className = 'dialog-input';
       content.appendChild(urlLabel);
       content.appendChild(urlInput);
@@ -863,8 +940,21 @@ document.addEventListener('DOMContentLoaded', () => {
     saveBtn.textContent = 'Save';
     saveBtn.className = 'dialog-btn save-btn';
     saveBtn.addEventListener('click', () => {
-      const updates = { title: nameInput.value };
-      if (!isFolder) {
+      // Ensure we have a valid title
+      let titleValue = nameInput.value.trim();
+      if (!titleValue && !isFolder && urlInput && urlInput.value) {
+        // If title is empty for bookmark, try to use hostname
+        try {
+          titleValue = new URL(urlInput.value).hostname;
+        } catch (e) {
+          titleValue = 'Untitled';
+        }
+      } else if (!titleValue) {
+        titleValue = isFolder ? 'New Folder' : 'Untitled';
+      }
+      
+      const updates = { title: titleValue };
+      if (!isFolder && urlInput) {
         updates.url = urlInput.value;
       }
       
@@ -895,7 +985,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') {
         e.preventDefault();
         // Execute save action directly
-        const updates = { title: nameInput.value };
+        // Ensure we have a valid title
+        let titleValue = nameInput.value.trim();
+        if (!titleValue && !isFolder && urlInput && urlInput.value) {
+          // If title is empty for bookmark, try to use hostname
+          try {
+            titleValue = new URL(urlInput.value).hostname;
+          } catch (e) {
+            titleValue = 'Untitled';
+          }
+        } else if (!titleValue) {
+          titleValue = isFolder ? 'New Folder' : 'Untitled';
+        }
+        
+        const updates = { title: titleValue };
         if (!isFolder && urlInput) {
           updates.url = urlInput.value;
         }
@@ -1009,8 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
     favoriteItem.className = 'favorite-item';
 
     const link = document.createElement('a');
-    link.href = bookmark.url;
-    link.target = '_blank';
+    link.href = '#';
     link.className = 'favorite-link';
 
     const favicon = document.createElement('img');
@@ -1062,7 +1164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     favoriteItem.addEventListener('click', (e) => {
       if (!isEditMode && !e.target.classList.contains('menu-btn') && !isDragging) {
         // In normal mode, clicking anywhere opens the link
-        window.open(bookmark.url, '_blank');
+        chrome.tabs.create({ url: bookmark.url, index: 999999 });
       }
     });
 
@@ -1176,8 +1278,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return { element: item, childrenContainer };
     } else {
       const link = document.createElement('a');
-      link.href = bookmark.url;
-      link.target = '_blank';
+      link.href = '#';
       link.className = 'bookmark-link';
       
       const favicon = document.createElement('img');
@@ -1190,7 +1291,23 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const title = document.createElement('span');
       title.className = 'bookmark-title';
-      title.textContent = bookmark.title;
+      // Show hostname if title is empty or just whitespace
+      let displayTitle = bookmark.title && bookmark.title.trim() 
+        ? bookmark.title.trim() 
+        : 'Untitled';
+      
+      // If title is empty, try to use hostname as fallback
+      if (!bookmark.title || !bookmark.title.trim()) {
+        try {
+          if (bookmark.url) {
+            displayTitle = new URL(bookmark.url).hostname;
+          }
+        } catch (e) {
+          displayTitle = 'Untitled';
+        }
+      }
+      
+      title.textContent = displayTitle;
       
       // Add to favorites button
       const addToFavoritesBtn = document.createElement('button');
@@ -1204,7 +1321,23 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const favorites = await getFavorites();
         if (!favorites.some(fav => fav.url === bookmark.url)) {
-          favorites.push({ title: bookmark.title, url: bookmark.url });
+          // Ensure we have a valid title, use URL as fallback if title is empty
+          let bookmarkTitle = bookmark.title && bookmark.title.trim() 
+            ? bookmark.title.trim() 
+            : 'Untitled';
+          
+          // If title is empty, try to use hostname as fallback
+          if (!bookmark.title || !bookmark.title.trim()) {
+            try {
+              if (bookmark.url) {
+                bookmarkTitle = new URL(bookmark.url).hostname;
+              }
+            } catch (e) {
+              bookmarkTitle = 'Untitled';
+            }
+          }
+          
+          favorites.push({ title: bookmarkTitle, url: bookmark.url });
           saveFavorites(favorites);
           renderFavorites();
         }
@@ -1213,6 +1346,12 @@ document.addEventListener('DOMContentLoaded', () => {
       link.appendChild(favicon);
       link.appendChild(title);
       link.appendChild(addToFavoritesBtn);
+
+      // Add click handler for bookmarks
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        chrome.tabs.create({ url: bookmark.url, index: 999999 });
+      });
 
       // Add right-click context menu for bookmarks
       link.addEventListener('contextmenu', (e) => {
@@ -1302,16 +1441,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Render favorites
   async function renderFavorites() {
-    const favorites = await getFavorites();
-    favoritesContainer.innerHTML = '';
-    
-    favorites.forEach(bookmark => {
-      const favoriteElement = createFavoriteElement(bookmark);
-      favoritesContainer.appendChild(favoriteElement);
-    });
-    
-    // Update edit mode styling
-    updateEditModeStyles();
+    try {
+      const favorites = await getFavorites();
+      
+      // Validate favorites data
+      if (!Array.isArray(favorites)) {
+        console.error('Error: Invalid favorites data, expected array');
+        return;
+      }
+      
+      // Store current favicon sources before clearing
+      const currentFavicons = new Map();
+      const existingFavicons = favoritesContainer.querySelectorAll('img[data-url]');
+      existingFavicons.forEach(img => {
+        if (img.src && !img.src.includes('logo-16-inactive.png')) {
+          currentFavicons.set(img.dataset.url, img.src);
+        }
+      });
+      
+      favoritesContainer.innerHTML = '';
+      
+      favorites.forEach(bookmark => {
+        if (bookmark && bookmark.url) {
+          const favoriteElement = createFavoriteElement(bookmark);
+          favoritesContainer.appendChild(favoriteElement);
+          
+          // Restore favicon if we had it cached
+          const faviconImg = favoriteElement.querySelector('img[data-url]');
+          if (faviconImg && currentFavicons.has(bookmark.url)) {
+            faviconImg.src = currentFavicons.get(bookmark.url);
+          }
+        }
+      });
+      
+      // Update edit mode styling
+      updateEditModeStyles();
+    } catch (error) {
+      console.error('Error rendering favorites:', error);
+    }
   }
 
   // Update edit mode styles
@@ -1333,24 +1500,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Function to move bookmark position
   async function moveBookmarkPosition(bookmark, direction) {
-    const favorites = await getFavorites();
-    const currentIndex = favorites.findIndex(fav => fav.url === bookmark.url);
-    
-    if (currentIndex === -1) return;
-    
-    const newIndex = currentIndex + direction;
-    
-    // Check bounds
-    if (newIndex < 0 || newIndex >= favorites.length) return;
-    
-    // Swap positions
-    const temp = favorites[currentIndex];
-    favorites[currentIndex] = favorites[newIndex];
-    favorites[newIndex] = temp;
-    
-    // Save and re-render
-    saveFavorites(favorites);
-    renderFavorites();
+    try {
+      const favorites = await getFavorites();
+      
+      if (!Array.isArray(favorites) || favorites.length === 0) {
+        console.error('No favorites found to move');
+        return;
+      }
+      
+      const currentIndex = favorites.findIndex(fav => fav.url === bookmark.url);
+      
+      if (currentIndex === -1) {
+        console.error('Bookmark not found in favorites');
+        return;
+      }
+      
+      const newIndex = currentIndex + direction;
+      
+      // Check bounds
+      if (newIndex < 0 || newIndex >= favorites.length) return;
+      
+      // Swap positions
+      const temp = favorites[currentIndex];
+      favorites[currentIndex] = favorites[newIndex];
+      favorites[newIndex] = temp;
+      
+      // Save and re-render
+      saveFavorites(favorites);
+      renderFavorites();
+    } catch (error) {
+      console.error('Error moving bookmark position:', error);
+    }
   }
 
   // Function to add current page to favorites
@@ -1420,11 +1600,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Listen for favicon responses and bookmark changes
   chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'favicon_response' && message.dataUrl) {
-      const imgs = document.querySelectorAll(`img[data-url="${message.url}"]`);
-      imgs.forEach(img => {
-        img.src = message.dataUrl;
-      });
+    if (message.type === 'favicon_response' && message.dataUrl && message.url) {
+      try {
+        // Use CSS selector that properly escapes special characters in URLs
+        const imgs = document.querySelectorAll(`img[data-url="${CSS.escape(message.url)}"]`);
+        imgs.forEach(img => {
+          // Verify the image element still exists and has the right URL
+          if (img && img.dataset.url === message.url) {
+            img.src = message.dataUrl;
+          }
+        });
+      } catch (error) {
+        console.error('Error updating favicon:', error);
+      }
     } else if (message.type === 'bookmarks_changed') {
       // Refresh bookmarks when changes are detected
       console.log('Bookmarks changed, refreshing...');
