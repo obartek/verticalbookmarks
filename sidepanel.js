@@ -118,12 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     expandedElements.forEach(element => {
       const folderHeader = element.previousElementSibling;
-      if (folderHeader) {
-        const titleElement = folderHeader.querySelector('.folder-title');
-        if (titleElement) {
-          // Use folder title as identifier (could be improved with unique IDs)
-          expandedFolders.add(titleElement.textContent);
-        }
+      if (folderHeader && folderHeader.dataset.folderId) {
+        // Use folder ID as identifier instead of title
+        expandedFolders.add(folderHeader.dataset.folderId);
       }
     });
     
@@ -138,8 +135,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const allFolders = document.querySelectorAll('.folder-header');
       
       allFolders.forEach(folderHeader => {
-        const titleElement = folderHeader.querySelector('.folder-title');
-        if (titleElement && expandedFolders.has(titleElement.textContent)) {
+        const folderId = folderHeader.dataset.folderId;
+        if (folderId && expandedFolders.has(folderId)) {
           const childrenContainer = folderHeader.nextElementSibling;
           const expandIcon = folderHeader.querySelector('.expand-icon');
           
@@ -149,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       });
-    }, 100); // Small delay to ensure DOM is updated
+    }, 150); // Increased delay to ensure DOM is fully updated after render
   }
 
   // Update specific folder color without full refresh
@@ -2109,9 +2106,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Debounce the refresh to prevent rapid multiple calls
-    refreshTimeout = setTimeout(() => {
+    refreshTimeout = setTimeout(async () => {
+      // Save expanded folders state before refresh
+      const expandedFolders = saveExpandedFolders();
+      
       chrome.bookmarks.getTree(async (bookmarkTree) => {
         await renderAllBookmarks(bookmarkTree);
+        
+        // Restore expanded folders after refresh
+        restoreExpandedFolders(expandedFolders);
       });
     }, 100);
   }
@@ -2122,6 +2125,9 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshBtn.classList.add('refreshing');
     
     try {
+      // Save expanded folders state before refresh
+      const expandedFolders = saveExpandedFolders();
+      
       // First, reset all favicon to default icons
       const allFaviconImages = document.querySelectorAll('img[data-url]');
       allFaviconImages.forEach(img => {
@@ -2158,6 +2164,9 @@ document.addEventListener('DOMContentLoaded', () => {
         await renderAllBookmarks(bookmarkTree);
         await renderFavorites();
         
+        // Restore expanded folders after refresh
+        restoreExpandedFolders(expandedFolders);
+        
         // Then request fresh favicons for all URLs
         const uniqueUrls = [...new Set(allBookmarks)];
         uniqueUrls.forEach(url => {
@@ -2178,6 +2187,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize
   chrome.bookmarks.getTree(async (bookmarkTree) => {
     await renderAllBookmarks(bookmarkTree);
+    // No need to restore expanded folders on initial load since all folders start collapsed
   });
 
   renderFavorites();
