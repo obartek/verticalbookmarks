@@ -160,41 +160,14 @@ document.addEventListener('DOMContentLoaded', () => {
       colors[folderId] = color;
     }
     
-    saveFolderColors(colors);
-    
-    // Find and update the specific folder element using data-folder-id
-    const folderHeader = document.querySelector(`[data-folder-id="${folderId}"]`);
-    
-    if (folderHeader) {
-      const folderIcon = folderHeader.querySelector('.folder-icon');
-      
-      if (color) {
-        folderHeader.classList.add('custom-color');
-        folderHeader.style.borderColor = color;
-        
-        if (folderIcon) {
-          folderIcon.classList.add('custom-folder-icon');
-          folderIcon.style.setProperty('--folder-color', color);
-          folderIcon.innerHTML = '';
-        }
-      } else {
-        folderHeader.classList.remove('custom-color');
-        folderHeader.style.borderColor = '';
-        
-        if (folderIcon) {
-          folderIcon.classList.remove('custom-folder-icon');
-          folderIcon.style.removeProperty('--folder-color');
-          folderIcon.textContent = '📁';
-        }
-      }
-    }
+    await saveFolderColors(colors);
+    await refreshBookmarks();
   }
 
 
 
   // Set color for a specific folder
   async function setFolderColor(folderId, color) {
-    // Use optimized update instead of full refresh
     await updateFolderColor(folderId, color);
   }
 
@@ -203,11 +176,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Get all bookmark folders to find subfolders
     chrome.bookmarks.getTree(async (bookmarkTree) => {
       const folderIds = await getAllSubfolderIds(bookmarkTree, folderId);
-      
+      const colors = await getFolderColors();
+
       // Apply color to all found folders
       for (const id of folderIds) {
-        await updateFolderColor(id, color);
+        if (color === null) {
+            delete colors[id];
+        } else {
+            colors[id] = color;
+        }
       }
+      await saveFolderColors(colors);
+      await refreshBookmarks();
     });
   }
 
@@ -1641,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const folderColors = await getFolderColors();
       if (folderColors[bookmark.id]) {
         folderHeader.classList.add('custom-color');
-        folderHeader.style.borderColor = folderColors[bookmark.id];
+        folderHeader.style.setProperty('--folder-color', folderColors[bookmark.id]);
         folderHeader.dataset.folderColor = folderColors[bookmark.id];
       }
       
@@ -1654,7 +1634,6 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (folderColors[bookmark.id]) {
         folderIcon.classList.add('custom-folder-icon');
-        folderIcon.style.setProperty('--folder-color', folderColors[bookmark.id]);
         folderIcon.innerHTML = '';
       } else {
         folderIcon.textContent = '📁';
