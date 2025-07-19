@@ -869,96 +869,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
   }
 
-  // Create context menu for My Picks
-  function createContextMenu(bookmark, x, y) {
-    // Remove existing context menu if any
-    const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-      existingMenu.remove();
-    }
 
-    const contextMenu = document.createElement('div');
-    contextMenu.className = 'context-menu';
-    
-    // Temporarily position menu to calculate its size
-    contextMenu.style.left = x + 'px';
-    contextMenu.style.top = y + 'px';
-    contextMenu.style.visibility = 'hidden';
-    document.body.appendChild(contextMenu);
-
-    const openItem = document.createElement('div');
-    openItem.className = 'context-menu-item';
-    openItem.textContent = 'Open';
-    openItem.addEventListener('click', () => {
-      chrome.tabs.create({ url: bookmark.url, index: 999999 });
-      contextMenu.remove();
-    });
-
-    const removeItem = document.createElement('div');
-    removeItem.className = 'context-menu-item';
-    removeItem.textContent = 'Delete';
-    removeItem.addEventListener('click', async () => {
-      try {
-        const favorites = await getFavorites();
-        const updatedFavorites = favorites.filter(fav => fav.url !== bookmark.url);
-        
-        // Validate that we actually have favorites and the filter worked
-        if (Array.isArray(favorites) && favorites.length > 0) {
-          saveFavorites(updatedFavorites);
-          renderFavorites();
-        } else {
-          console.error('Error: No favorites found or invalid favorites data');
-        }
-      } catch (error) {
-        console.error('Error removing favorite:', error);
-      }
-      contextMenu.remove();
-    });
-
-    contextMenu.appendChild(openItem);
-    contextMenu.appendChild(removeItem);
-    
-    // Calculate menu dimensions and adjust position if needed
-    const menuRect = contextMenu.getBoundingClientRect();
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    
-    let finalX = x;
-    let finalY = y;
-    
-    // Check if menu goes beyond right edge of screen
-    if (x + menuRect.width > windowWidth) {
-      finalX = windowWidth - menuRect.width - 10; // 10px margin from edge
-    }
-    
-    // Check if menu goes beyond bottom edge of screen
-    if (y + menuRect.height > windowHeight) {
-      finalY = windowHeight - menuRect.height - 10; // 10px margin from edge
-    }
-    
-    // Apply final position and make visible
-    contextMenu.style.left = finalX + 'px';
-    contextMenu.style.top = finalY + 'px';
-    contextMenu.style.visibility = 'visible';
-
-    // Close menu when clicking outside
-    const closeMenu = (e) => {
-      if (!contextMenu.contains(e.target)) {
-        contextMenu.remove();
-        document.removeEventListener('click', closeMenu);
-        document.removeEventListener('contextmenu', closeMenu);
-      }
-    };
-    
-    // Add listeners with a small delay to avoid immediate closure
-    setTimeout(() => {
-      document.addEventListener('click', closeMenu);
-      document.addEventListener('contextmenu', closeMenu);
-    }, 10);
-  }
 
   // Create Chrome-style context menu for bookmarks
-  function createChromeBookmarkContextMenu(bookmark, x, y, isFolder = false) {
+  function createChromeBookmarkContextMenu(bookmark, x, y, isFolder = false, isMyPick = false) {
     // Usuń istniejące menu
     const existingMenu = document.querySelector('.context-menu');
     if (existingMenu) existingMenu.remove();
@@ -1025,7 +939,11 @@ document.addEventListener('DOMContentLoaded', () => {
     renameItem.className = 'context-menu-item';
     renameItem.textContent = 'Rename';
     renameItem.addEventListener('click', () => {
-      showEditDialog(bookmark, isFolder);
+      if (isMyPick) {
+        showEditMyPickDialog(bookmark);
+      } else {
+        showEditDialog(bookmark, isFolder);
+      }
       contextMenu.remove();
     });
     contextMenu.appendChild(renameItem);
@@ -1035,26 +953,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const deleteItem = document.createElement('div');
     deleteItem.className = 'context-menu-item delete-item';
     deleteItem.textContent = 'Delete';
-    deleteItem.addEventListener('click', () => {
+    deleteItem.addEventListener('click', async () => {
       if (confirm(`Delete "${bookmark.title}"?`)) {
-        if (isFolder) chrome.bookmarks.removeTree(bookmark.id);
-        else          chrome.bookmarks.remove(bookmark.id);
+        if (isMyPick) {
+          // Handle My Picks deletion
+          try {
+            const favorites = await getFavorites();
+            const updatedFavorites = favorites.filter(fav => fav.url !== bookmark.url);
+            
+            if (Array.isArray(favorites) && favorites.length > 0) {
+              saveFavorites(updatedFavorites);
+              renderFavorites();
+            } else {
+              console.error('Error: No favorites found or invalid favorites data');
+            }
+          } catch (error) {
+            console.error('Error removing favorite:', error);
+          }
+        } else if (isFolder) {
+          chrome.bookmarks.removeTree(bookmark.id);
+        } else {
+          chrome.bookmarks.remove(bookmark.id);
+        }
       }
       contextMenu.remove();
     });
     contextMenu.appendChild(deleteItem);
   
-    // --- 5) ADD FOLDER… (teraz zawsze dostępne) ---
-    appendSeparator();
-    const addFolderItem = document.createElement('div');
-    addFolderItem.className = 'context-menu-item';
-    addFolderItem.textContent = 'Add Folder\u2026';
-    addFolderItem.addEventListener('click', () => {
-      const parentId = isFolder ? bookmark.id : bookmark.parentId;
-      showAddFolderDialog(parentId);
-      contextMenu.remove();
-    });
-    contextMenu.appendChild(addFolderItem);
+    // --- 5) ADD FOLDER… (tylko dla zakładek Chrome, nie dla My Picks) ---
+    if (!isMyPick) {
+      appendSeparator();
+      const addFolderItem = document.createElement('div');
+      addFolderItem.className = 'context-menu-item';
+      addFolderItem.textContent = 'Add Folder\u2026';
+      addFolderItem.addEventListener('click', () => {
+        const parentId = isFolder ? bookmark.id : bookmark.parentId;
+        showAddFolderDialog(parentId);
+        contextMenu.remove();
+      });
+      contextMenu.appendChild(addFolderItem);
+    }
   
     // --- 6) Finalne ustawienie pozycji menu ---
     const menuRect = contextMenu.getBoundingClientRect();
@@ -1339,6 +1277,120 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+  // Show edit dialog for My Picks
+  function showEditMyPickDialog(bookmark) {
+    // Validate bookmark parameter
+    if (!bookmark || !bookmark.url) {
+      console.error('Invalid bookmark passed to showEditMyPickDialog');
+      return;
+    }
+    
+    const dialog = document.createElement('div');
+    dialog.className = 'bookmark-dialog';
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    
+    const content = document.createElement('div');
+    content.className = 'dialog-content';
+    
+    const title = document.createElement('h3');
+    title.textContent = 'Edit My Pick';
+    content.appendChild(title);
+    
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Name:';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = bookmark.title || '';
+    nameInput.className = 'dialog-input';
+    content.appendChild(nameLabel);
+    content.appendChild(nameInput);
+    
+    const buttons = document.createElement('div');
+    buttons.className = 'dialog-buttons';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'dialog-btn cancel-btn';
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+    });
+    
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.className = 'dialog-btn save-btn';
+    saveBtn.addEventListener('click', async () => {
+      // Ensure we have a valid title
+      let titleValue = nameInput.value.trim();
+      if (!titleValue) {
+        // If title is empty, try to use hostname
+        try {
+          titleValue = new URL(bookmark.url).hostname;
+        } catch (e) {
+          titleValue = 'Untitled';
+        }
+      }
+      
+      try {
+        const favorites = await getFavorites();
+        const updatedFavorites = favorites.map(fav => 
+          fav.url === bookmark.url ? { ...fav, title: titleValue } : fav
+        );
+        saveFavorites(updatedFavorites);
+        renderFavorites();
+      } catch (error) {
+        console.error('Error updating My Pick:', error);
+      }
+      
+      document.body.removeChild(dialog);
+    });
+    
+    buttons.appendChild(cancelBtn);
+    buttons.appendChild(saveBtn);
+    content.appendChild(buttons);
+    
+    dialog.appendChild(overlay);
+    dialog.appendChild(content);
+    document.body.appendChild(dialog);
+    
+    nameInput.focus();
+    nameInput.select();
+    
+    // Add Enter key support
+    const handleEnterKey = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // Execute save action directly
+        let titleValue = nameInput.value.trim();
+        if (!titleValue) {
+          try {
+            titleValue = new URL(bookmark.url).hostname;
+          } catch (e) {
+            titleValue = 'Untitled';
+          }
+        }
+        
+        (async () => {
+          try {
+            const favorites = await getFavorites();
+            const updatedFavorites = favorites.map(fav => 
+              fav.url === bookmark.url ? { ...fav, title: titleValue } : fav
+            );
+            saveFavorites(updatedFavorites);
+            renderFavorites();
+          } catch (error) {
+            console.error('Error updating My Pick:', error);
+          }
+        })();
+        
+        document.body.removeChild(dialog);
+      }
+    };
+    
+    nameInput.addEventListener('keydown', handleEnterKey);
+  }
+
   // Show add folder dialog
   function showAddFolderDialog(parentId) {
     const dialog = document.createElement('div');
@@ -1453,7 +1505,7 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       e.stopPropagation();
       const rect = menuBtn.getBoundingClientRect();
-      createContextMenu(bookmark, rect.left, rect.bottom);
+      createChromeBookmarkContextMenu(bookmark, rect.left, rect.bottom, false, true);
     });
 
     // Left arrow button (only visible in edit mode)
@@ -1485,9 +1537,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle click behavior based on mode
     favoriteItem.addEventListener('click', (e) => {
-      if (!isEditMode && !e.target.classList.contains('menu-btn') && !isDragging) {
-        // In normal mode, clicking anywhere opens the link
-        chrome.tabs.create({ url: bookmark.url, index: 999999 });
+      if (isEditMode || isDragging || e.target.classList.contains('menu-btn')) {
+        return;
+      }
+
+      // If Ctrl/Cmd+Click, open in new tab
+      if (e.ctrlKey || e.metaKey) {
+        chrome.tabs.create({ url: bookmark.url });
+      } else {
+        // Otherwise navigate current tab
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].id) {
+            chrome.tabs.update(tabs[0].id, { url: bookmark.url });
+          }
+        });
       }
     });
 
@@ -1543,7 +1606,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle right-click context menu
     favoriteItem.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      createContextMenu(bookmark, e.clientX, e.clientY);
+      createChromeBookmarkContextMenu(bookmark, e.clientX, e.clientY, false, true);
     });
 
     // Handle long press for mobile
@@ -1553,7 +1616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         mobileLongPressTimer = setTimeout(() => {
           e.preventDefault();
           const touch = e.touches[0];
-          createContextMenu(bookmark, touch.clientX, touch.clientY);
+          createChromeBookmarkContextMenu(bookmark, touch.clientX, touch.clientY, false, true);
         }, 500);
       }
     });
