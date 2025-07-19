@@ -363,6 +363,26 @@ document.addEventListener('DOMContentLoaded', () => {
       ghost.style.left = (event.clientX - dragOffset.x) + 'px';
       ghost.style.top = (event.clientY - dragOffset.y) + 'px';
     }
+
+    // Check if dragging a bookmark over favorites section
+    if (draggedBookmarkNode && draggedBookmarkNode.url) { // Ensure it's a bookmark with a URL
+      const favoritesRect = favoritesContainer.getBoundingClientRect();
+      if (
+        event.clientX >= favoritesRect.left &&
+        event.clientX <= favoritesRect.right &&
+        event.clientY >= favoritesRect.top &&
+        event.clientY <= favoritesRect.bottom
+      ) {
+        favoritesContainer.classList.add('external-drag-over');
+        hideDropIndicator();
+        document.querySelectorAll('.folder-drop-target').forEach(el => {
+          el.classList.remove('folder-drop-target');
+        });
+        return; // Handled, stop here
+      } else {
+        favoritesContainer.classList.remove('external-drag-over');
+      }
+    }
     
     // Clear previous drop targets
     document.querySelectorAll('.folder-drop-target').forEach(el => {
@@ -622,8 +642,47 @@ document.addEventListener('DOMContentLoaded', () => {
     hideDropIndicator();
     
     if (draggedBookmarkNode) {
-      // Handle bookmark drag end
-      await handleBookmarkDragEnd(event);
+      // Check if dropped on favorites container to add to My Picks
+      if (draggedBookmarkNode.url) { // It's a bookmark with a URL
+        const favoritesRect = favoritesContainer.getBoundingClientRect();
+        if (
+          event.clientX >= favoritesRect.left &&
+          event.clientX <= favoritesRect.right &&
+          event.clientY >= favoritesRect.top &&
+          event.clientY <= favoritesRect.bottom
+        ) {
+          // Add to MyPicks
+          const bookmark = draggedBookmarkNode;
+          const favorites = await getFavorites();
+          
+          if (!favorites.some(fav => fav.url === bookmark.url)) {
+            let bookmarkTitle = bookmark.title && bookmark.title.trim() 
+              ? bookmark.title.trim() 
+              : 'Untitled';
+            
+            if (!bookmark.title || !bookmark.title.trim()) {
+              try {
+                if (bookmark.url) {
+                  bookmarkTitle = new URL(bookmark.url).hostname;
+                }
+              } catch (e) {
+                bookmarkTitle = 'Untitled';
+              }
+            }
+            
+            favorites.push({ title: bookmarkTitle, url: bookmark.url });
+            saveFavorites(favorites);
+            await renderFavorites();
+          }
+          // The drop is handled, fall through to cleanup
+        } else {
+          // It's a normal bookmark move, call the original handler
+          await handleBookmarkDragEnd(event);
+        }
+      } else {
+        // It's a folder or something without a URL, treat as a normal move
+        await handleBookmarkDragEnd(event);
+      }
     } else {
       // Handle MyPicks drag end (existing code)
       // Find final insertion point and move element
@@ -2492,73 +2551,6 @@ document.addEventListener('DOMContentLoaded', () => {
     await refreshBookmarks();
   }
   
-  async function handleBookmarkDragEnd(event) {
-    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
-    const folderHeader = targetElement ? targetElement.closest('.folder-header') : null;
-
-    if (folderHeader && draggedBookmarkNode) {
-        const folderId = folderHeader.dataset.folderId;
-        if (folderId && folderId !== draggedBookmarkNode.id) { 
-            await moveBookmarkWithRetry(draggedBookmarkNode.id, folderId, 0);
-        }
-    } else {
-        const insertionPoint = getBookmarkInsertionPoint(event.clientX, event.clientY);
-        
-        if (insertionPoint && draggedBookmarkNode) {
-          const { parentId, beforeElement } = insertionPoint;
-          
-          if (parentId) {
-            const children = await chrome.bookmarks.getChildren(parentId);
-            
-            let targetIndex = beforeElement
-              ? children.findIndex(child => child.id === beforeElement.dataset.id)
-              : children.length;
-
-            if (targetIndex === -1) {
-              targetIndex = children.length;
-            }
-
-            if (draggedBookmarkNode.parentId !== parentId || draggedBookmarkNode.index !== targetIndex) {
-              await moveBookmarkWithRetry(draggedBookmarkNode.id, parentId, targetIndex);
-            }
-          }
-        }
-    }
-
-    // This part should run regardless of where the bookmark was dropped to clean up.
-    isDragging = false;
-    
-    const ghost = document.querySelector('.drag-ghost');
-    if (ghost) {
-      ghost.remove();
-    }
-    
-    hideDropIndicator();
-    
-    document.querySelectorAll('.folder-drop-target').forEach(el => {
-      el.classList.remove('folder-drop-target');
-    });
-
-    if (draggedElement) {
-        draggedElement.style.opacity = '1';
-        draggedElement.classList.remove('dragging');
-    }
-    
-    if (draggedContainer) {
-        draggedContainer.classList.remove('drag-active');
-    }
-    
-    document.removeEventListener('mousemove', handleDragMove);
-    document.removeEventListener('mouseup', handleDragEnd);
-    document.removeEventListener('keydown', handleDragEscape);
-    
-    draggedElement = null;
-    dragStartIndex = -1;
-    draggedBookmarkNode = null;
-    draggedContainer = null;
-    draggedBookmarkParentId = null;
-  }
-
   // Listen for bookmark changes
   chrome.bookmarks.onCreated.addListener(async (id, bookmark) => {
     await refreshBookmarks();
