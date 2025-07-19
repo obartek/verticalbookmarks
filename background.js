@@ -94,74 +94,73 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
   }
 
   if (message.type === 'get_favicon') {
-    const tryGetFavicon = async (url, forceRefresh = false) => {
-      const domain = new URL(url).hostname;
+    const FAVICON_CACHE_KEY = 'favicon_cache';
+
+    // Function to get favicons from cache
+    const getCachedFavicon = async (url) => {
+      const result = await chrome.storage.local.get(FAVICON_CACHE_KEY);
+      const cache = result[FAVICON_CACHE_KEY] || {};
+      return cache[url];
+    };
+
+    // Function to set favicon in cache
+    const setCachedFavicon = async (url, dataUrl) => {
+      const result = await chrome.storage.local.get(FAVICON_CACHE_KEY);
+      const cache = result[FAVICON_CACHE_KEY] || {};
+      cache[url] = dataUrl;
+      await chrome.storage.local.set({ [FAVICON_CACHE_KEY]: cache });
+    };
+
+    const fetchAndCacheFavicon = async (url) => {
+      const googleFaviconUrl = `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(url)}`;
       
-      // First try to get favicon from tab if it's the current tab
       try {
-        const tabs = await chrome.tabs.query({ url: url });
-        if (tabs.length > 0 && tabs[0].favIconUrl && tabs[0].favIconUrl !== '') {
-          const response = await fetch(tabs[0].favIconUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            if (blob.size > 0 && blob.type.startsWith('image/')) {
-              return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(blob);
-              });
-            }
+        const response = await fetch(googleFaviconUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          
+          if (blob.size > 0 && blob.type.startsWith('image/')) {
+            return new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const dataUrl = reader.result;
+                setCachedFavicon(url, dataUrl);
+                resolve(dataUrl);
+              };
+              reader.readAsDataURL(blob);
+            });
           }
         }
       } catch (error) {
-        // Continue to manual favicon detection
+        console.error(`Failed to fetch favicon for ${url}:`, error);
       }
-      
-      // List of potential favicon URLs to try in order
-      const faviconUrls = [
-        `${new URL(url).origin}/favicon.ico`,
-        `${new URL(url).origin}/favicon.png`,
-        `${new URL(url).origin}/apple-touch-icon.png`,
-        `https://www.google.com/s2/favicons?sz=32&domain=${domain}`,
-        `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(url)}`
-      ];
-      
-      for (const faviconUrl of faviconUrls) {
-        try {
-          const response = await fetch(faviconUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            
-            // Check if it's a valid image (not a 404 page or empty response)
-            if (blob.size > 0 && blob.type.startsWith('image/')) {
-              return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(blob);
-              });
-            }
-          }
-        } catch (error) {
-          // Continue to next URL
-          continue;
-        }
-      }
-      
       return null;
     };
     
     (async () => {
       try {
-        const dataUrl = await tryGetFavicon(message.url, message.force_refresh);
+        let dataUrl;
+        if (!message.force_refresh) {
+          dataUrl = await getCachedFavicon(message.url);
+        }
+
+        if (!dataUrl) {
+          dataUrl = await fetchAndCacheFavicon(message.url);
+        }
+        
         if (dataUrl) {
-          await chrome.runtime.sendMessage({
+          chrome.runtime.sendMessage({
             type: 'favicon_response',
             url: message.url,
             dataUrl: dataUrl
+          }).catch(err => {
+            if (!err.message.includes('Receiving end does not exist')) {
+                console.error('Error sending favicon response:', err);
+            }
           });
         }
       } catch (error) {
-        // Silently ignore errors, the default icon will be used in the sidepanel
+        console.error('Error in get_favicon handler:', error);
       }
     })();
     

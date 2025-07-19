@@ -959,59 +959,68 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Create Chrome-style context menu for bookmarks
   function createChromeBookmarkContextMenu(bookmark, x, y, isFolder = false) {
-    // Remove existing context menu if any
+    // Usuń istniejące menu
     const existingMenu = document.querySelector('.context-menu');
-    if (existingMenu) {
-      existingMenu.remove();
-    }
-
+    if (existingMenu) existingMenu.remove();
+  
     const contextMenu = document.createElement('div');
     contextMenu.className = 'context-menu chrome-bookmark-menu';
-    
-    // Temporarily position menu to calculate its size
     contextMenu.style.left = x + 'px';
     contextMenu.style.top = y + 'px';
     contextMenu.style.visibility = 'hidden';
     document.body.appendChild(contextMenu);
-
+  
+    const appendSeparator = () => {
+      const sep = document.createElement('div');
+      sep.className = 'context-menu-separator';
+      contextMenu.appendChild(sep);
+    };
+  
+    // --- 1) Dla zwykłych zakładek: Open in New Tab / Window / Incognito ---
     if (!isFolder) {
-      // Open in New Tab
-      const openNewTabItem = document.createElement('div');
-      openNewTabItem.className = 'context-menu-item';
-      openNewTabItem.textContent = 'Open in New Tab';
-      openNewTabItem.addEventListener('click', () => {
-        chrome.tabs.create({ url: bookmark.url, index: 999999 });
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(openNewTabItem);
-
-      // Open in New Window
-      const openNewWindowItem = document.createElement('div');
-      openNewWindowItem.className = 'context-menu-item';
-      openNewWindowItem.textContent = 'Open in New Window';
-      openNewWindowItem.addEventListener('click', () => {
-        chrome.windows.create({ url: bookmark.url });
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(openNewWindowItem);
-
-      // Open in Incognito Window
-      const openIncognitoItem = document.createElement('div');
-      openIncognitoItem.className = 'context-menu-item';
-      openIncognitoItem.textContent = 'Open in Incognito Window';
-      openIncognitoItem.addEventListener('click', () => {
-        chrome.windows.create({ url: bookmark.url, incognito: true });
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(openIncognitoItem);
-
-      // Separator
-      const separator1 = document.createElement('div');
-      separator1.className = 'context-menu-separator';
-      contextMenu.appendChild(separator1);
+      ['Open in New Tab', 'Open in New Window', 'Open in Incognito Window']
+        .forEach(text => {
+          const item = document.createElement('div');
+          item.className = 'context-menu-item';
+          item.textContent = text;
+          item.addEventListener('click', () => {
+            if (text.includes('Incognito')) {
+              chrome.windows.create({ url: bookmark.url, incognito: true });
+            } else if (text.includes('Window')) {
+              chrome.windows.create({ url: bookmark.url });
+            } else {
+              chrome.tabs.create({ url: bookmark.url, index: 999999 });
+            }
+            contextMenu.remove();
+          });
+          contextMenu.appendChild(item);
+        });
+      appendSeparator();
     }
-
-    // Rename
+  
+    // --- 2) Dla folderów: Color Folder… / Color All Folders… / Remove All Colors… ---
+    if (isFolder) {
+      const colorOps = [
+        { text: 'Color Folder\u2026', fn: () => showColorPicker(bookmark, false) },
+        { text: 'Color All Folders\u2026', fn: () => showColorPicker(bookmark, true) },
+        { text: 'Remove All Colors\u2026', fn: () => {
+            if (confirm('Remove colors from this folder and all subfolders?')) {
+              setFolderColorRecursive(bookmark.id, null);
+            }
+          }
+        }
+      ];
+      colorOps.forEach(({text, fn}) => {
+        const el = document.createElement('div');
+        el.className = 'context-menu-item';
+        el.textContent = text;
+        el.addEventListener('click', () => { fn(); contextMenu.remove(); });
+        contextMenu.appendChild(el);
+      });
+      appendSeparator();
+    }
+  
+    // --- 3) RENAME ---
     const renameItem = document.createElement('div');
     renameItem.className = 'context-menu-item';
     renameItem.textContent = 'Rename';
@@ -1020,121 +1029,51 @@ document.addEventListener('DOMContentLoaded', () => {
       contextMenu.remove();
     });
     contextMenu.appendChild(renameItem);
-
-    if (isFolder) {
-      // Color Folder…
-      const changeColorItem = document.createElement('div');
-      changeColorItem.className = 'context-menu-item';
-      changeColorItem.textContent = 'Color Folder…';
-      changeColorItem.addEventListener('click', () => {
-        showColorPicker(bookmark, false); // false = single folder
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(changeColorItem);
-
-      // Color All Folders…
-      const changeAllColorsItem = document.createElement('div');
-      changeAllColorsItem.className = 'context-menu-item';
-      changeAllColorsItem.textContent = 'Color All Folders…';
-      changeAllColorsItem.addEventListener('click', () => {
-        showColorPicker(bookmark, true); // true = all subfolders
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(changeAllColorsItem);
-
-      // Remove All Colors…
-      const removeAllColorsItem = document.createElement('div');
-      removeAllColorsItem.className = 'context-menu-item';
-      removeAllColorsItem.textContent = 'Remove All Colors…';
-      removeAllColorsItem.addEventListener('click', () => {
-        if (confirm('Are you sure you want to remove colors from this folder and all its subfolders?')) {
-          setFolderColorRecursive(bookmark.id, null); // null = remove color
-        }
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(removeAllColorsItem);
-    }
-
-    // Separator
-    const separator2 = document.createElement('div');
-    separator2.className = 'context-menu-separator';
-    contextMenu.appendChild(separator2);
-
-    // Delete
+  
+    // --- 4) DELETE ---
+    appendSeparator();
     const deleteItem = document.createElement('div');
     deleteItem.className = 'context-menu-item delete-item';
     deleteItem.textContent = 'Delete';
     deleteItem.addEventListener('click', () => {
-      if (confirm(`Are you sure you want to delete "${bookmark.title}"?`)) {
-        const removalCallback = () => {
-          if (chrome.runtime.lastError) {
-            console.error('Error deleting bookmark:', chrome.runtime.lastError.message);
-          } else {
-            // Refresh will happen automatically via bookmark change listener
-          }
-        };
-
-        if (isFolder) {
-          chrome.bookmarks.removeTree(bookmark.id, removalCallback);
-        } else {
-          chrome.bookmarks.remove(bookmark.id, removalCallback);
-        }
+      if (confirm(`Delete "${bookmark.title}"?`)) {
+        if (isFolder) chrome.bookmarks.removeTree(bookmark.id);
+        else          chrome.bookmarks.remove(bookmark.id);
       }
       contextMenu.remove();
     });
     contextMenu.appendChild(deleteItem);
-
-    if (!isFolder) {
-      // Separator
-      const separator4 = document.createElement('div');
-      separator4.className = 'context-menu-separator';
-      contextMenu.appendChild(separator4);
-
-      // Add Folder...
-      const addFolderItem = document.createElement('div');
-      addFolderItem.className = 'context-menu-item';
-      addFolderItem.textContent = 'Add Folder...';
-      addFolderItem.addEventListener('click', () => {
-        showAddFolderDialog(bookmark.parentId);
-        contextMenu.remove();
-      });
-      contextMenu.appendChild(addFolderItem);
-    }
-
-    // Calculate menu dimensions and adjust position if needed
+  
+    // --- 5) ADD FOLDER… (teraz zawsze dostępne) ---
+    appendSeparator();
+    const addFolderItem = document.createElement('div');
+    addFolderItem.className = 'context-menu-item';
+    addFolderItem.textContent = 'Add Folder\u2026';
+    addFolderItem.addEventListener('click', () => {
+      const parentId = isFolder ? bookmark.id : bookmark.parentId;
+      showAddFolderDialog(parentId);
+      contextMenu.remove();
+    });
+    contextMenu.appendChild(addFolderItem);
+  
+    // --- 6) Finalne ustawienie pozycji menu ---
     const menuRect = contextMenu.getBoundingClientRect();
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    
-    let finalX = x;
-    let finalY = y;
-    
-    // Check if menu goes beyond right edge of screen
-    if (x + menuRect.width > windowWidth) {
-      finalX = windowWidth - menuRect.width - 10; // 10px margin from edge
-    }
-    
-    // Check if menu goes beyond bottom edge of screen
-    if (y + menuRect.height > windowHeight) {
-      finalY = windowHeight - menuRect.height - 10; // 10px margin from edge
-    }
-    
-    // Apply final position and make visible
+    let finalX = x, finalY = y;
+    if (x + menuRect.width > window.innerWidth)  finalX = window.innerWidth - menuRect.width - 10;
+    if (y + menuRect.height > window.innerHeight) finalY = window.innerHeight - menuRect.height - 10;
     contextMenu.style.left = finalX + 'px';
-    contextMenu.style.top = finalY + 'px';
+    contextMenu.style.top  = finalY + 'px';
     contextMenu.style.visibility = 'visible';
-
-    // Close menu when clicking outside
-    const closeMenu = (e) => {
-      if (!contextMenu.contains(e.target)) {
-        contextMenu.remove();
-        document.removeEventListener('click', closeMenu);
-        document.removeEventListener('contextmenu', closeMenu);
-      }
-    };
-    
-    // Add listeners with a small delay to avoid immediate closure
+  
+    // Zamknij po kliknięciu poza menu
     setTimeout(() => {
+      const closeMenu = e => {
+        if (!contextMenu.contains(e.target)) {
+          contextMenu.remove();
+          document.removeEventListener('click', closeMenu);
+          document.removeEventListener('contextmenu', closeMenu);
+        }
+      };
       document.addEventListener('click', closeMenu);
       document.addEventListener('contextmenu', closeMenu);
     }, 10);
