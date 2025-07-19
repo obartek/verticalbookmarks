@@ -461,89 +461,51 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getBookmarkInsertionPoint(x, y) {
-    // Find the container under the mouse
-    const bookmarksBar = bookmarksBarContainer.getBoundingClientRect();
-    const otherBookmarks = otherBookmarksContainer.getBoundingClientRect();
-    
-    let targetContainer = null;
-    
-    // Check which container the mouse is over
-    if (x >= bookmarksBar.left && x <= bookmarksBar.right && 
-        y >= bookmarksBar.top && y <= bookmarksBar.bottom) {
+    // 1. Wybierz kontener (bookmarksBarContainer / otherBookmarksContainer / folderChildren)
+    let targetContainer;
+    const bb = bookmarksBarContainer.getBoundingClientRect();
+    const ob = otherBookmarksContainer.getBoundingClientRect();
+    if (x >= bb.left && x <= bb.right && y >= bb.top && y <= bb.bottom) {
       targetContainer = bookmarksBarContainer;
-    } else if (x >= otherBookmarks.left && x <= otherBookmarks.right && 
-               y >= otherBookmarks.top && y <= otherBookmarks.bottom) {
+    } else if (x >= ob.left && x <= ob.right && y >= ob.top && y <= ob.bottom) {
       targetContainer = otherBookmarksContainer;
-    } else if (draggedContainer) {
-      // If not over any container, use the original container
-      targetContainer = draggedContainer;
+    } else {
+      targetContainer = draggedContainer || bookmarksBarContainer;
     }
-    
-    if (!targetContainer) return null;
-    
-    // Check if we're inside an expanded folder
-    const allFolders = targetContainer.querySelectorAll('.folder-children[style*="block"]');
-    let actualContainer = targetContainer;
-    let parentId = null;
-    
-    for (const folderChildren of allFolders) {
-      const rect = folderChildren.getBoundingClientRect();
-      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-        actualContainer = folderChildren;
-        // Get parent folder ID
-        const folderHeader = folderChildren.previousElementSibling;
-        if (folderHeader && folderHeader.dataset.folderId) {
-          parentId = folderHeader.dataset.folderId;
-        }
+    // jeśli jesteś wewnątrz rozwiniętego folderu, nadpisz targetContainer analogicznie
+    document.querySelectorAll('.folder-children[style*="block"]').forEach(fc => {
+      const r = fc.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        targetContainer = fc;
       }
-    }
+    });
+  
+    // 2. Zbierz bezpośrednie dzieci (elementy i foldery) i odfiltruj ten, którego ciągniesz
+    const items = Array.from(
+      targetContainer.querySelectorAll(':scope > .bookmark-item-tree, :scope > .bookmark-folder')
+    ).filter(el => el !== draggedElement);
+  
+    // 3. Znajdź pierwszy element, przed którym leży kursor
+    let beforeElement = items.find(item => {
+      const r = item.getBoundingClientRect();
+      return y < r.top + r.height / 2;
+    });
+  
+    // 4. Ustal indeks: jeśli nic nie znalazłeś, wstawiamy na koniec
+    const index = beforeElement ? items.indexOf(beforeElement) : items.length;
     
-    const items = Array.from(actualContainer.querySelectorAll(':scope > .bookmark-item-tree, :scope > .bookmark-folder')).filter(child => 
-      child !== draggedElement && child !== dropIndicator
-    );
-    
-    // Find the closest item to the mouse's Y position
-    let closestItem = null;
-    let minDistance = Infinity;
-
-    for (const item of items) {
-        const rect = item.getBoundingClientRect();
-        const midY = rect.top + rect.height / 2;
-        const distance = Math.abs(y - midY);
-
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestItem = item;
-        }
+    // 5. ParentId: pobierz z kontenera
+    let parentId = null;
+    if (targetContainer.classList.contains('folder-children')) {
+      const folderHeader = targetContainer.previousElementSibling;
+      parentId = folderHeader ? folderHeader.dataset.folderId : null;
+    } else if (targetContainer === bookmarksBarContainer) {
+      parentId = '1';
+    } else if (targetContainer === otherBookmarksContainer) {
+      parentId = '2';
     }
-
-    if (closestItem) {
-        const rect = closestItem.getBoundingClientRect();
-        const midY = rect.top + rect.height / 2;
-        let index = items.indexOf(closestItem);
-        let beforeElement = closestItem;
-
-        if (y > midY) {
-            // Mouse is in the bottom half, so we insert AFTER the closest item
-            index += 1;
-            beforeElement = items[index] || null;
-        }
-        
-        return {
-          container: actualContainer,
-          beforeElement: beforeElement,
-          index: index,
-          parentId: parentId
-        };
-    }
-    
-    // Default to the end if no items are found
-    return {
-      container: actualContainer,
-      beforeElement: null,
-      index: items.length,
-      parentId: parentId
-    };
+  
+    return { container: targetContainer, beforeElement, index, parentId };
   }
   
   function createBookmarkDropGap(insertionPoint) {
@@ -756,48 +718,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (folderHeader && draggedBookmarkNode) {
         const folderId = folderHeader.dataset.folderId;
         if (folderId && folderId !== draggedBookmarkNode.id) { 
-            await chrome.bookmarks.move(draggedBookmarkNode.id, { parentId: folderId });
-            // The onMoved listener will handle the UI update.
-            // We should still clean up the drag state.
+            await moveBookmarkWithRetry(draggedBookmarkNode.id, folderId, 0);
         }
     } else {
         const insertionPoint = getBookmarkInsertionPoint(event.clientX, event.clientY);
         
         if (insertionPoint && draggedBookmarkNode) {
-          const { index, container, parentId } = insertionPoint;
+          const { parentId, beforeElement } = insertionPoint;
           
-          let newParentId = parentId;
-          
-          if (!newParentId) {
-            if (container === bookmarksBarContainer) {
-              const bookmarkTree = await chrome.bookmarks.getTree();
-              const bookmarkBarNode = bookmarkTree[0].children.find(node => 
-                node.id === '1' || node.title.toLowerCase().includes('bookmarks bar')
-              );
-              newParentId = bookmarkBarNode ? bookmarkBarNode.id : '1';
-            } else if (container === otherBookmarksContainer) {
-              const bookmarkTree = await chrome.bookmarks.getTree();
-              const otherBookmarksNode = bookmarkTree[0].children.find(node => 
-                node.id === '2' || node.title.toLowerCase().includes('other bookmarks')
-              );
-              newParentId = otherBookmarksNode ? otherBookmarksNode.id : '2';
+          if (parentId) {
+            const children = await chrome.bookmarks.getChildren(parentId);
+            
+            let targetIndex = beforeElement
+              ? children.findIndex(child => child.id === beforeElement.dataset.id)
+              : children.length;
+
+            if (targetIndex === -1) {
+              targetIndex = children.length;
             }
-          }
-          
-          if (newParentId && (draggedBookmarkNode.parentId !== newParentId || draggedBookmarkNode.index !== index)) {
-            try {
-              const parentNode = await chrome.bookmarks.getChildren(newParentId);
-              const maxIndex = parentNode.length;
-              
-              const validIndex = Math.max(0, Math.min(index, maxIndex));
-              
-              await chrome.bookmarks.move(draggedBookmarkNode.id, {
-                parentId: newParentId,
-                index: validIndex
-              });
-              
-            } catch (error) {
-              console.error('Error moving bookmark:', error);
+
+            if (draggedBookmarkNode.parentId !== parentId || draggedBookmarkNode.index !== targetIndex) {
+              await moveBookmarkWithRetry(draggedBookmarkNode.id, parentId, targetIndex);
             }
           }
         }
@@ -835,6 +776,23 @@ document.addEventListener('DOMContentLoaded', () => {
     draggedBookmarkNode = null;
     draggedContainer = null;
     draggedBookmarkParentId = null;
+  }
+
+  async function moveBookmarkWithRetry(id, parentId, index) {
+    try {
+      await chrome.bookmarks.move(id, { parentId, index });
+      // On success, refresh the UI
+      await refreshBookmarks();
+    } catch (error) {
+      if (error.message.includes("Can't modify bookmarks when a drag is in progress")) {
+        // If the error is due to an ongoing drag, wait and retry
+        setTimeout(() => moveBookmarkWithRetry(id, parentId, index), 50);
+      } else {
+        console.error('Error moving bookmark:', error);
+        // For other errors, perform a fallback refresh
+        await refreshBookmarks();
+      }
+    }
   }
 
   function getDragAfterElement(container, y) {
@@ -2529,66 +2487,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   async function handleBookmarkMoved(id, moveInfo) {
-    // Find and remove the old element if it exists in the DOM.
-    const oldElement = document.querySelector(`.bookmark-item-tree[data-id='${id}']`) ||
-                       document.querySelector(`.folder-header[data-folder-id='${id}']`)?.closest('.bookmark-folder');
-    
-    // Persist expanded state before making changes
-    const expandedFolders = saveExpandedFolders();
-
-    if (oldElement) {
-      oldElement.remove();
-    }
-  
-    // Find the new parent container.
-    let newParentContainer = document.querySelector(`[data-folder-id='${moveInfo.parentId}'] + .folder-children`);
-    if (!newParentContainer) {
-      // Check root containers
-      if (moveInfo.parentId === '1') {
-        newParentContainer = bookmarksBarContainer;
-      } else if (moveInfo.parentId === '2') {
-        newParentContainer = otherBookmarksContainer;
-      }
-    }
-  
-    // If the new parent is visible, create and insert the new element.
-    if (newParentContainer) {
-      try {
-        const bookmarkNodes = await chrome.bookmarks.get(id);
-        if (bookmarkNodes && bookmarkNodes.length > 0) {
-          const bookmarkNode = bookmarkNodes[0];
-          // In the bookmarks API, a folder doesn't have a `url` property.
-          const isFolder = !bookmarkNode.url;
-          
-          // Create the new DOM element
-          const newElement = await createBookmarkTreeElement(bookmarkNode, isFolder);
-  
-          // Find the correct position to insert the new element
-          const children = Array.from(newParentContainer.children).filter(
-            c => c.classList.contains('bookmark-item-tree') || c.classList.contains('bookmark-folder')
-          );
-          const beforeElement = children[moveInfo.index] || null;
-  
-          if (beforeElement) {
-            newParentContainer.insertBefore(newElement, beforeElement);
-          } else {
-            newParentContainer.appendChild(newElement);
-          }
-        }
-      } catch (error) {
-        console.error('Error handling bookmark move:', error);
-        // Fallback to full refresh on error
-        await refreshBookmarks();
-      }
-    } else {
-        // If the parent container is not rendered (e.g., collapsed folder), we don't need to do anything
-        // visually, as the change will be reflected when the folder is next opened.
-        // However, if the logic requires a refresh for hidden moves, a full refresh is the simplest approach.
-        // For now, we assume visual-only updates are sufficient if the location is visible.
-    }
-
-    // Restore expanded folders after DOM modification
-    restoreExpandedFolders(expandedFolders);
+    // A simple refresh is often the most reliable way to handle moves,
+    // especially since onMoved doesn't fire for reordering within the same folder.
+    await refreshBookmarks();
   }
   
   async function handleBookmarkDragEnd(event) {
@@ -2598,48 +2499,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (folderHeader && draggedBookmarkNode) {
         const folderId = folderHeader.dataset.folderId;
         if (folderId && folderId !== draggedBookmarkNode.id) { 
-            await chrome.bookmarks.move(draggedBookmarkNode.id, { parentId: folderId });
-            // The onMoved listener will handle the UI update.
-            // We should still clean up the drag state.
+            await moveBookmarkWithRetry(draggedBookmarkNode.id, folderId, 0);
         }
     } else {
         const insertionPoint = getBookmarkInsertionPoint(event.clientX, event.clientY);
         
         if (insertionPoint && draggedBookmarkNode) {
-          const { index, container, parentId } = insertionPoint;
+          const { parentId, beforeElement } = insertionPoint;
           
-          let newParentId = parentId;
-          
-          if (!newParentId) {
-            if (container === bookmarksBarContainer) {
-              const bookmarkTree = await chrome.bookmarks.getTree();
-              const bookmarkBarNode = bookmarkTree[0].children.find(node => 
-                node.id === '1' || node.title.toLowerCase().includes('bookmarks bar')
-              );
-              newParentId = bookmarkBarNode ? bookmarkBarNode.id : '1';
-            } else if (container === otherBookmarksContainer) {
-              const bookmarkTree = await chrome.bookmarks.getTree();
-              const otherBookmarksNode = bookmarkTree[0].children.find(node => 
-                node.id === '2' || node.title.toLowerCase().includes('other bookmarks')
-              );
-              newParentId = otherBookmarksNode ? otherBookmarksNode.id : '2';
+          if (parentId) {
+            const children = await chrome.bookmarks.getChildren(parentId);
+            
+            let targetIndex = beforeElement
+              ? children.findIndex(child => child.id === beforeElement.dataset.id)
+              : children.length;
+
+            if (targetIndex === -1) {
+              targetIndex = children.length;
             }
-          }
-          
-          if (newParentId && (draggedBookmarkNode.parentId !== newParentId || draggedBookmarkNode.index !== index)) {
-            try {
-              const parentNode = await chrome.bookmarks.getChildren(newParentId);
-              const maxIndex = parentNode.length;
-              
-              const validIndex = Math.max(0, Math.min(index, maxIndex));
-              
-              await chrome.bookmarks.move(draggedBookmarkNode.id, {
-                parentId: newParentId,
-                index: validIndex
-              });
-              
-            } catch (error) {
-              console.error('Error moving bookmark:', error);
+
+            if (draggedBookmarkNode.parentId !== parentId || draggedBookmarkNode.index !== targetIndex) {
+              await moveBookmarkWithRetry(draggedBookmarkNode.id, parentId, targetIndex);
             }
           }
         }
@@ -2690,9 +2570,6 @@ document.addEventListener('DOMContentLoaded', () => {
     await refreshBookmarks();
   });
   chrome.bookmarks.onMoved.addListener(handleBookmarkMoved);
-  chrome.bookmarks.onChildrenReordered.addListener(async (id, reorderInfo) => {
-    await refreshBookmarks();
-  });
   chrome.bookmarks.onImportBegan.addListener(() => {
     console.log('Bookmark import started.');
   });

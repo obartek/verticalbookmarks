@@ -150,19 +150,20 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
       return null;
     };
     
-    tryGetFavicon(message.url, message.force_refresh)
-      .then(dataUrl => {
+    (async () => {
+      try {
+        const dataUrl = await tryGetFavicon(message.url, message.force_refresh);
         if (dataUrl) {
-          chrome.runtime.sendMessage({
+          await chrome.runtime.sendMessage({
             type: 'favicon_response',
             url: message.url,
             dataUrl: dataUrl
           });
         }
-      })
-      .catch(() => {
-        // Ignore errors, default icon will be used
-      });
+      } catch (error) {
+        // Silently ignore errors, the default icon will be used in the sidepanel
+      }
+    })();
     
     return true; // Indicates that the response is sent asynchronously
   }
